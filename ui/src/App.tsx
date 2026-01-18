@@ -7,7 +7,7 @@ import './App.css';
 // API Configuration
 // =============================================================================
 
-const API_BASE = 'http://127.0.0.1:8000';
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
 
 // =============================================================================
 // UTILITY FUNCTIONS
@@ -670,11 +670,57 @@ function MetricsView() {
 
 
 // =============================================================================
+// APPROVED DOCUMENTS LIST
+// =============================================================================
+
+function ApprovedDocumentsList({ items, onView }: { items: ReviewItem[]; onView: (item: ReviewItem) => void }) {
+    if (items.length === 0) {
+        return (
+            <div className="queue-empty">
+                <Icons.Check />
+                <h3>No approved documents</h3>
+                <p>Completed documents will appear here</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="queue-list">
+            {items.map(item => (
+                <div
+                    key={item.item_id}
+                    className="queue-item"
+                    onClick={() => onView(item)}
+                >
+                    <div className="queue-item-header">
+                        <span className={`priority-badge p${item.priority}`}>P{item.priority}</span>
+                        <span className="queue-item-time" style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                            {new Date(item.created_at).toLocaleDateString()}
+                        </span>
+                    </div>
+                    <div className="queue-item-title">
+                        {item.extraction_result.invoice_number?.value || item.document_id}
+                    </div>
+                    <div className="queue-item-meta">
+                        <span>{item.extraction_result.vendor_name?.value || 'Unknown'}</span>
+                        <span className={`status-badge status-${item.status}`}>
+                            {item.status}
+                        </span>
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+// =============================================================================
 // REVIEW VIEW
 // =============================================================================
 
 function ReviewView() {
     const [queueItems, setQueueItems] = useState<ReviewItem[]>([]);
+    const [historyItems, setHistoryItems] = useState<ReviewItem[]>([]);
+    const [viewMode, setViewMode] = useState<'queue' | 'history'>('queue');
     const [selectedItem, setSelectedItem] = useState<ReviewItem | null>(null);
     const [queueStats, setQueueStats] = useState<QueueStats | null>(null);
     const [reviewerStats, setReviewerStats] = useState<ReviewerStats | null>(null);
@@ -689,9 +735,9 @@ function ReviewView() {
         setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
     }, []);
 
-    const loadData = useCallback(async () => {
-        setLoading(true);
+    const fetchQueue = useCallback(async () => {
         try {
+            setLoading(true);
             const [queueResponse, stats, myStats, myItems] = await Promise.all([
                 reviewApi.getQueue(),
                 reviewApi.getQueueStats(),
@@ -718,6 +764,26 @@ function ReviewView() {
             setLoading(false);
         }
     }, [showToast]);
+
+    const fetchHistory = useCallback(async () => {
+        try {
+            setLoading(true);
+            const res = await reviewApi.getHistory();
+            setHistoryItems(res.items);
+        } catch {
+            showToast('error', 'Failed to load history');
+        } finally {
+            setLoading(false);
+        }
+    }, [showToast]);
+
+    const loadData = useCallback(() => {
+        if (viewMode === 'queue') {
+            fetchQueue();
+        } else {
+            fetchHistory();
+        }
+    }, [viewMode, fetchQueue, fetchHistory]);
 
     useEffect(() => {
         loadData();
@@ -807,16 +873,32 @@ function ReviewView() {
         <div className="review-view-container">
             {/* Queue Sidebar - Desktop always, Mobile toggle */}
             <div className={`queue-sidebar ${showMobileQueue ? 'show' : ''}`}>
-                <div className="queue-header">
-                    <h2>Review Queue</h2>
-                    <span className="queue-count">{queueItems.length}</span>
-                    <button className="btn btn-ghost btn-sm" onClick={loadData}>
-                        <Icons.RefreshCw />
-                    </button>
+                <div className="queue-header" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <h2>Review Queue</h2>
+                        <button className="btn btn-ghost btn-sm" onClick={loadData}>
+                            <Icons.RefreshCw />
+                        </button>
+                    </div>
+
+                    <div className="queue-tabs">
+                        <button
+                            className={`queue-tab ${viewMode === 'queue' ? 'active' : ''}`}
+                            onClick={() => { setViewMode('queue'); setSelectedItem(null); }}
+                        >
+                            Pending {queueStats && `(${queueStats.total_pending})`}
+                        </button>
+                        <button
+                            className={`queue-tab ${viewMode === 'history' ? 'active' : ''}`}
+                            onClick={() => { setViewMode('history'); setSelectedItem(null); }}
+                        >
+                            Approved
+                        </button>
+                    </div>
                 </div>
 
-                {/* Quick Stats */}
-                {queueStats && (
+                {/* Quick Stats - Only for Queue Mode */}
+                {viewMode === 'queue' && queueStats && (
                     <div className="queue-quick-stats">
                         <div className="quick-stat">
                             <span className="quick-stat-value">{queueStats.total_pending}</span>
@@ -829,11 +911,13 @@ function ReviewView() {
                     </div>
                 )}
 
-                <div className="queue-list">
+                <div className="queue-items-container">
                     {loading ? (
                         <div className="loading-state">
                             <span className="spinner"></span>
                         </div>
+                    ) : viewMode === 'history' ? (
+                        <ApprovedDocumentsList items={historyItems} onView={handleSelectItem} />
                     ) : queueItems.length === 0 ? (
                         <div className="queue-empty">
                             <Icons.Inbox />
@@ -859,12 +943,6 @@ function ReviewView() {
                                     <span>{item.extraction_result.vendor_name?.value || 'Unknown'}</span>
                                     <span className="doc-type">{item.document_type}</span>
                                 </div>
-                                {item.low_confidence_fields.length > 0 && (
-                                    <div className="queue-item-warning">
-                                        <Icons.AlertTriangle />
-                                        {item.low_confidence_fields.length} field{item.low_confidence_fields.length > 1 ? 's' : ''} need attention
-                                    </div>
-                                )}
                             </div>
                         ))
                     )}
@@ -882,6 +960,7 @@ function ReviewView() {
                         onRelease={handleRelease}
                         onBack={handleBack}
                         loading={actionLoading}
+                        readOnly={viewMode === 'history'}
                     />
                 ) : (
                     <div className="empty-state">
@@ -918,9 +997,10 @@ interface DocumentReviewPanelProps {
     onRelease: () => void;
     onBack: () => void;
     loading: boolean;
+    readOnly?: boolean;
 }
 
-function DocumentReviewPanel({ item, onApprove, onCorrect, onReject, onRelease, onBack, loading }: DocumentReviewPanelProps) {
+function DocumentReviewPanel({ item, onApprove, onCorrect, onReject, onRelease, onBack, loading, readOnly = false }: DocumentReviewPanelProps) {
     const [editMode, setEditMode] = useState(false);
     const [editedFields, setEditedFields] = useState<Record<string, any>>({});
     const [showRejectModal, setShowRejectModal] = useState(false);
@@ -1025,28 +1105,30 @@ function DocumentReviewPanel({ item, onApprove, onCorrect, onReject, onRelease, 
             </div>
 
             {/* Actions */}
-            <div className="review-actions">
-                {editMode ? (
-                    <>
-                        <button className="btn btn-ghost" onClick={() => setEditMode(false)}>Cancel</button>
-                        <button className="btn btn-primary btn-lg" onClick={handleSaveCorrections} disabled={loading}>
-                            <Icons.Check /> Save Changes
-                        </button>
-                    </>
-                ) : (
-                    <>
-                        <button className="btn btn-danger" onClick={() => setShowRejectModal(true)} disabled={loading}>
-                            <Icons.X /> <span className="btn-text">Reject</span>
-                        </button>
-                        <button className="btn btn-warning" onClick={() => setEditMode(true)} disabled={loading}>
-                            <Icons.Edit /> <span className="btn-text">Correct</span>
-                        </button>
-                        <button className="btn btn-success btn-lg" onClick={onApprove} disabled={loading}>
-                            <Icons.Check /> <span className="btn-text">Approve</span>
-                        </button>
-                    </>
-                )}
-            </div>
+            {!readOnly && (
+                <div className="review-actions">
+                    {editMode ? (
+                        <>
+                            <button className="btn btn-ghost" onClick={() => setEditMode(false)}>Cancel</button>
+                            <button className="btn btn-primary btn-lg" onClick={handleSaveCorrections} disabled={loading}>
+                                <Icons.Check /> Save Changes
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <button className="btn btn-danger" onClick={() => setShowRejectModal(true)} disabled={loading}>
+                                <Icons.X /> <span className="btn-text">Reject</span>
+                            </button>
+                            <button className="btn btn-warning" onClick={() => setEditMode(true)} disabled={loading}>
+                                <Icons.Edit /> <span className="btn-text">Correct</span>
+                            </button>
+                            <button className="btn btn-success btn-lg" onClick={onApprove} disabled={loading}>
+                                <Icons.Check /> <span className="btn-text">Approve</span>
+                            </button>
+                        </>
+                    )}
+                </div>
+            )}
 
             {/* Reject Modal */}
             {showRejectModal && (

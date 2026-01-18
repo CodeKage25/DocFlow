@@ -12,7 +12,7 @@ import type {
     SubmitReviewResponse,
 } from '../types';
 
-const API_BASE = 'http://127.0.0.1:8000/api/v1/review';
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000/api/v1/review';
 
 class ReviewApi {
     private async request<T>(
@@ -77,6 +77,10 @@ class ReviewApi {
 
     async getItem(itemId: string): Promise<ReviewItem> {
         return this.request<ReviewItem>(`/items/${itemId}`);
+    }
+
+    async getHistory(limit: number = 50): Promise<{ items: ReviewItem[] }> {
+        return this.request<{ items: ReviewItem[] }>(`/history?limit=${limit}`);
     }
 
     async claimItem(itemId: string): Promise<ClaimResponse> {

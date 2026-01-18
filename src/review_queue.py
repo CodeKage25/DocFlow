@@ -589,6 +589,33 @@ class ReviewQueueManager:
             stats.avg_wait_time_minutes = sum(wait_times) / len(wait_times)
         
         return stats
+
+    async def get_history(self, limit: int = 50) -> List[ReviewItem]:
+        """Get completed items history."""
+        items = await ReviewRepository.get_completed_items(limit)
+        result = []
+        for data in items:
+            try:
+                # Reconstruct ExtractedFieldData objects
+                extraction_result = {}
+                for k, v in data['extraction_result'].items():
+                    if isinstance(v, dict):
+                        extraction_result[k] = ExtractedFieldData(**v)
+                    else:
+                        pass
+                
+                # Filter valid keys
+                valid_keys = ReviewItem.__annotations__.keys()
+                item_data = {k: v for k, v in data.items() if k in valid_keys}
+                item_data['extraction_result'] = extraction_result
+                
+                if 'priority_factors' not in item_data or not item_data['priority_factors']:
+                     item_data['priority_factors'] = {}
+                     
+                result.append(ReviewItem(**item_data))
+            except Exception as e:
+                logger.error(f"Error hydrating history item {data.get('item_id')}: {e}")
+        return result
     
     # -------------------------------------------------------------------------
     # Claim Operations
@@ -1140,6 +1167,12 @@ def get_review_router(queue_manager: ReviewQueueManager) -> APIRouter:
             raise HTTPException(status_code=400, detail=error)
         return {"success": True}
     
+    @router.get("/api/v1/review/history")
+    async def get_review_history(limit: int = 50):
+        """Get processed document history."""
+        items = await queue_manager.get_history(limit)
+        return {"items": [asdict(item) for item in items]}
+
     @router.post("/api/v1/review/items/{item_id}/submit")
     async def submit_review(
         item_id: str, 

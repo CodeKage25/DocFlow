@@ -513,6 +513,40 @@ class ReviewRepository:
             return []
 
     @staticmethod
+    async def get_completed_items(limit: int = 50) -> List[Dict[str, Any]]:
+        """Get completed review items."""
+        pool = await get_db_pool()
+        if pool is None:
+            return []
+            
+        query = """
+            SELECT * FROM review_items 
+            WHERE status = 'completed'
+            ORDER BY updated_at DESC
+            LIMIT $1
+        """
+        
+        try:
+            async with pool.acquire() as conn:
+                rows = await conn.fetch(query, limit)
+                return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Failed to get completed items: {e}")
+            return []            
+        query = """
+            SELECT * FROM review_items 
+            WHERE status IN ('pending', 'assigned', 'in_review', 'escalated')
+        """
+        
+        try:
+            async with pool.acquire() as conn:
+                rows = await conn.fetch(query)
+                return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Failed to get active items: {e}")
+            return []
+
+    @staticmethod
     async def update_status(item_id: str, status: str, reviewer_id: Optional[str] = None) -> bool:
         """Update item status."""
         pool = await get_db_pool()
