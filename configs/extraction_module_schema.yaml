@@ -1,0 +1,510 @@
+# Extraction Module Configuration Schema
+# This schema defines the configuration for the document extraction module
+
+version: "1.0.0"
+
+# =============================================================================
+# FIELD DEFINITIONS
+# =============================================================================
+field_definitions:
+  # Invoice-specific fields
+  invoice_fields:
+    invoice_number:
+      type: string
+      required: true
+      validation:
+        pattern: "^[A-Z]{0,3}-?\\d{3,10}$"
+        min_length: 3
+        max_length: 20
+      confidence_threshold: 0.85
+      description: "Unique invoice identifier"
+    
+    invoice_date:
+      type: date
+      required: true
+      validation:
+        format: "ISO8601"  # YYYY-MM-DD
+        min_date: "2020-01-01"
+        max_date: "+30d"  # Not more than 30 days in future
+      confidence_threshold: 0.90
+      description: "Date the invoice was issued"
+    
+    due_date:
+      type: date
+      required: false
+      validation:
+        format: "ISO8601"
+        must_be_after: "invoice_date"
+      confidence_threshold: 0.85
+      description: "Payment due date"
+    
+    vendor_name:
+      type: string
+      required: true
+      validation:
+        min_length: 2
+        max_length: 200
+      confidence_threshold: 0.80
+      description: "Name of the vendor/supplier"
+    
+    vendor_address:
+      type: address
+      required: false
+      validation:
+        components:
+          - street
+          - city
+          - postal_code
+          - country
+      confidence_threshold: 0.75
+      description: "Full vendor address"
+    
+    vendor_tax_id:
+      type: string
+      required: false
+      validation:
+        patterns:
+          - "^\\d{2}-\\d{7}$"        # US EIN
+          - "^[A-Z]{2}\\d{9,12}$"   # EU VAT
+          - "^CHE-\\d{3}\\.\\d{3}\\.\\d{3}$"  # Swiss UID
+      confidence_threshold: 0.90
+      description: "Vendor tax identification number"
+    
+    customer_name:
+      type: string
+      required: false
+      validation:
+        min_length: 2
+        max_length: 200
+      confidence_threshold: 0.80
+      description: "Name of the customer/buyer"
+    
+    subtotal:
+      type: currency
+      required: true
+      validation:
+        min_value: 0
+        max_value: 999999999.99
+        decimal_places: 2
+      confidence_threshold: 0.90
+      description: "Sum before tax"
+    
+    tax_rate:
+      type: percentage
+      required: false
+      validation:
+        min_value: 0
+        max_value: 100
+        decimal_places: 2
+      confidence_threshold: 0.85
+      description: "Tax rate applied"
+    
+    tax_amount:
+      type: currency
+      required: false
+      validation:
+        min_value: 0
+        max_value: 999999999.99
+        decimal_places: 2
+        compute_check:
+          formula: "subtotal * tax_rate / 100"
+          tolerance: 0.01
+      confidence_threshold: 0.90
+      description: "Total tax amount"
+    
+    total_amount:
+      type: currency
+      required: true
+      validation:
+        min_value: 0
+        max_value: 999999999.99
+        decimal_places: 2
+        compute_check:
+          formula: "subtotal + tax_amount"
+          tolerance: 0.01
+      confidence_threshold: 0.95
+      description: "Total invoice amount including tax"
+    
+    currency:
+      type: string
+      required: true
+      validation:
+        enum: ["USD", "EUR", "GBP", "CHF", "JPY", "CAD", "AUD"]
+      confidence_threshold: 0.95
+      description: "Currency code (ISO 4217)"
+    
+    payment_terms:
+      type: string
+      required: false
+      validation:
+        enum: ["NET30", "NET60", "NET90", "DUE_ON_RECEIPT", "PREPAID"]
+      confidence_threshold: 0.75
+      description: "Payment terms"
+    
+    line_items:
+      type: array
+      required: true
+      min_items: 1
+      max_items: 100
+      item_schema:
+        description:
+          type: string
+          required: true
+          max_length: 500
+        quantity:
+          type: number
+          required: true
+          min_value: 0
+          decimal_places: 3
+        unit_price:
+          type: currency
+          required: true
+          min_value: 0
+        amount:
+          type: currency
+          required: true
+          compute_check:
+            formula: "quantity * unit_price"
+            tolerance: 0.01
+      confidence_threshold: 0.80
+      description: "Individual line items on the invoice"
+
+# =============================================================================
+# DOCUMENT TYPE CONFIGURATIONS
+# =============================================================================
+document_types:
+  invoice:
+    fields: "$ref:field_definitions.invoice_fields"
+    review_threshold: 0.75  # Route to review if overall confidence below
+    auto_approve_threshold: 0.95  # Auto-approve if above
+  
+  receipt:
+    fields:
+      - vendor_name
+      - invoice_date
+      - total_amount
+      - currency
+      - tax_amount
+      - payment_method
+    review_threshold: 0.70
+    auto_approve_threshold: 0.90
+  
+  contract:
+    fields:
+      - contract_id
+      - parties
+      - effective_date
+      - expiration_date
+      - contract_value
+      - terms
+    review_threshold: 0.80
+    auto_approve_threshold: 0.98
+  
+  purchase_order:
+    fields:
+      - po_number
+      - vendor_name
+      - customer_name
+      - order_date
+      - delivery_date
+      - line_items
+      - total_amount
+    review_threshold: 0.75
+    auto_approve_threshold: 0.95
+
+# =============================================================================
+# VALIDATION RULES
+# =============================================================================
+validation_rules:
+  # Cross-field validations
+  cross_field:
+    - name: "tax_calculation_check"
+      condition: "tax_amount != null AND tax_rate != null AND subtotal != null"
+      rule: "abs(tax_amount - (subtotal * tax_rate / 100)) <= 0.01"
+      severity: "warning"
+      message: "Tax amount doesn't match calculated tax"
+    
+    - name: "total_calculation_check"
+      condition: "total_amount != null AND subtotal != null"
+      rule: "abs(total_amount - (subtotal + coalesce(tax_amount, 0))) <= 0.01"
+      severity: "error"
+      message: "Total doesn't match subtotal + tax"
+    
+    - name: "line_items_total_check"
+      condition: "line_items != null AND subtotal != null"
+      rule: "abs(sum(line_items.amount) - subtotal) <= 0.01"
+      severity: "warning"
+      message: "Line items sum doesn't match subtotal"
+    
+    - name: "date_sequence_check"
+      condition: "invoice_date != null AND due_date != null"
+      rule: "due_date >= invoice_date"
+      severity: "error"
+      message: "Due date cannot be before invoice date"
+
+  # Format standardizations
+  format_standardization:
+    dates:
+      output_format: "ISO8601"  # YYYY-MM-DD
+      parse_formats:
+        - "YYYY-MM-DD"
+        - "DD/MM/YYYY"
+        - "MM/DD/YYYY"
+        - "DD-MM-YYYY"
+        - "DD.MM.YYYY"
+        - "MMMM DD, YYYY"
+    
+    currency:
+      decimal_separator: "."
+      thousands_separator: ","
+      strip_symbols: true
+      precision: 2
+    
+    percentage:
+      output_format: "decimal"  # 0.20 not 20%
+      precision: 4
+
+# =============================================================================
+# CONFIDENCE THRESHOLDS
+# =============================================================================
+confidence_thresholds:
+  # Global defaults
+  global:
+    minimum_field_confidence: 0.50
+    review_required_below: 0.75
+    auto_approve_above: 0.95
+  
+  # Per-criticality overrides
+  by_criticality:
+    critical:  # e.g., total_amount, invoice_number
+      minimum_field_confidence: 0.70
+      review_required_below: 0.85
+      auto_approve_above: 0.98
+    
+    high:  # e.g., dates, vendor_name
+      minimum_field_confidence: 0.60
+      review_required_below: 0.80
+      auto_approve_above: 0.95
+    
+    medium:  # e.g., address, line items
+      minimum_field_confidence: 0.50
+      review_required_below: 0.75
+      auto_approve_above: 0.92
+
+# =============================================================================
+# IDEMPOTENCY SETTINGS
+# =============================================================================
+idempotency:
+  # Hash algorithm for document fingerprinting
+  hash_algorithm: "sha256"
+  
+  # Components included in fingerprint
+  fingerprint_components:
+    - content_hash       # Document bytes
+    - document_type      # Type of document
+    - config_version     # This config version
+    - model_version      # LLM model version
+    - locked_fields      # Locked field names
+  
+  # Cache configuration
+  cache:
+    enabled: true
+    ttl_seconds: 86400   # 24 hours
+    max_entries: 100000  # LRU eviction after this
+    
+  # When to invalidate cache
+  invalidation_triggers:
+    - locked_field_change
+    - config_version_change
+    - model_version_change
+
+# =============================================================================
+# FIELD PRESERVATION RULES
+# =============================================================================
+field_preservation:
+  # How to handle locked fields
+  locked_field_behavior:
+    always_preserve: true
+    log_extraction_difference: true
+    max_difference_alert_threshold: 0.30  # Alert if extraction differs >30%
+  
+  # Which fields can be locked
+  lockable_fields:
+    - invoice_number
+    - invoice_date
+    - due_date
+    - vendor_name
+    - vendor_tax_id
+    - customer_name
+    - subtotal
+    - tax_rate
+    - tax_amount
+    - total_amount
+    - currency
+    - line_items
+  
+  # Lock metadata to capture
+  lock_metadata:
+    - locked_by        # User ID
+    - locked_at        # Timestamp
+    - original_value   # What system extracted
+    - reason           # Why corrected (optional)
+  
+  # Merge strategy when reprocessing
+  merge_strategy:
+    locked_fields: "preserve"      # Always keep locked value
+    unlocked_fields: "latest"      # Use new extraction
+    new_fields: "add"              # Add fields not in original
+
+# =============================================================================
+# OUTPUT FORMAT CONFIGURATION
+# =============================================================================
+output_formats:
+  # Parquet output for analytics
+  parquet:
+    enabled: true
+    compression: "snappy"
+    row_group_size: 10000
+    
+    schema:
+      document_id: "string"
+      document_type: "string"
+      processed_at: "timestamp[us]"
+      invoice_number: "string"
+      invoice_date: "date32"
+      due_date: "date32"
+      vendor_name: "string"
+      vendor_tax_id: "string"
+      customer_name: "string"
+      subtotal: "decimal128(15,2)"
+      tax_rate: "decimal128(5,4)"
+      tax_amount: "decimal128(15,2)"
+      total_amount: "decimal128(15,2)"
+      currency: "string"
+      line_item_count: "int32"
+      overall_confidence: "float"
+      review_required: "bool"
+      has_corrections: "bool"
+      processing_time_ms: "int64"
+    
+    partitioning:
+      - "year(processed_at)"
+      - "month(processed_at)"
+      - "document_type"
+  
+  # JSON output for API consumers
+  json:
+    enabled: true
+    pretty_print: false
+    include_nulls: false
+    date_format: "ISO8601"
+    
+    schema_version: "1.0.0"
+    
+    structure:
+      metadata:
+        - document_id
+        - document_type
+        - processed_at
+        - processing_time_ms
+        - overall_confidence
+        - schema_version
+      
+      extraction:
+        - invoice_number
+        - invoice_date
+        - due_date
+        - vendor
+        - customer
+        - amounts
+        - line_items
+      
+      quality:
+        - field_confidences
+        - validation_results
+        - review_required
+        - corrections
+      
+      lineage:
+        - source_hash
+        - extraction_model
+        - config_version
+        - corrections_history
+
+# =============================================================================
+# LLM CONFIGURATION
+# =============================================================================
+llm:
+  provider: "mistral"
+  model: "mistral-large-latest"
+  
+  parameters:
+    temperature: 0.1        # Low for deterministic extraction
+    max_tokens: 4096
+    top_p: 0.95
+  
+  retry:
+    max_attempts: 3
+    backoff_base: 1.0
+    backoff_max: 30.0
+    backoff_multiplier: 2.0
+    jitter: 0.1
+  
+  rate_limiting:
+    requests_per_second: 10
+    tokens_per_minute: 100000
+  
+  circuit_breaker:
+    failure_threshold: 5
+    recovery_timeout_seconds: 30
+    success_threshold: 3
+
+# =============================================================================
+# PROCESSING SETTINGS
+# =============================================================================
+processing:
+  # Concurrency limits
+  max_concurrent_documents: 100
+  max_concurrent_llm_calls: 50
+  
+  # Timeouts
+  document_timeout_seconds: 30
+  llm_timeout_seconds: 20
+  
+  # Queue settings
+  max_queue_size: 10000
+  batch_size: 10
+  batch_timeout_ms: 100
+  
+  # Review routing
+  review_queue:
+    enabled: true
+    sla_hours: 4
+    priority_boost_per_hour: 0.1
+
+# =============================================================================
+# AUDIT LOGGING
+# =============================================================================
+audit:
+  enabled: true
+  
+  events:
+    - document_received
+    - extraction_started
+    - extraction_completed
+    - extraction_failed
+    - field_locked
+    - field_unlocked
+    - review_assigned
+    - review_completed
+    - output_generated
+  
+  retention:
+    hot_storage_days: 30
+    warm_storage_days: 365
+    cold_storage_years: 7
+  
+  compliance:
+    include_original_document: false  # Privacy
+    include_field_values: true
+    hash_pii_fields: true
