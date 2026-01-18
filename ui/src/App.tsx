@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { ReviewItem, QueueStats, ReviewerStats, FieldCorrection } from './types';
+import type { ReviewItem, QueueStats, FieldCorrection } from './types';
 import { reviewApi } from './api/reviewApi';
 import './App.css';
 
@@ -723,7 +723,6 @@ function ReviewView() {
     const [viewMode, setViewMode] = useState<'queue' | 'history'>('queue');
     const [selectedItem, setSelectedItem] = useState<ReviewItem | null>(null);
     const [queueStats, setQueueStats] = useState<QueueStats | null>(null);
-    const [reviewerStats, setReviewerStats] = useState<ReviewerStats | null>(null);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(false);
     const [showMobileQueue, setShowMobileQueue] = useState(true);
@@ -738,7 +737,7 @@ function ReviewView() {
     const fetchQueue = useCallback(async () => {
         try {
             setLoading(true);
-            const [queueResponse, stats, myStats, myItems] = await Promise.all([
+            const [queueResponse, stats, _myStats, myItems] = await Promise.all([
                 reviewApi.getQueue(),
                 reviewApi.getQueueStats(),
                 reviewApi.getMyStats(),
@@ -746,7 +745,6 @@ function ReviewView() {
             ]);
             setQueueItems(queueResponse.items);
             setQueueStats(stats);
-            setReviewerStats(myStats);
 
             // Restore active item if one exists and we don't have one selected
             setSelectedItem(prev => {
@@ -844,7 +842,7 @@ function ReviewView() {
         }
     }, [selectedItem, showToast, loadData]);
 
-    const handleReject = useCallback(async (reason: string, category: string) => {
+    const handleReject = useCallback(async (reason: string, _category: string) => {
         if (!selectedItem) return;
         setActionLoading(true);
         try {
