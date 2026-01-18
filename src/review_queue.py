@@ -410,13 +410,10 @@ class ReviewQueueManager:
                 try:
                     # Convert extraction result dicts to objects
                     extraction_result = {}
-                    for k, v in data['extraction_result'].items():
-                        if isinstance(v, dict):
-                            extraction_result[k] = ExtractedFieldData(**v)
-                        else:
-                            # Handle case where it might already be object (unlikely here) or simple value
-                            # Assuming standard structure
-                            pass
+                    if data.get('extraction_result'):
+                        for k, v in data['extraction_result'].items():
+                            if isinstance(v, dict):
+                                extraction_result[k] = ExtractedFieldData(**v)
                             
                     # Remove DB columns not in dataclass or rename if necessary
                     # filtering keys...
@@ -428,6 +425,10 @@ class ReviewQueueManager:
                     # Handle arrays/jsonb that might need migration
                     if 'priority_factors' not in item_data or not item_data['priority_factors']:
                          item_data['priority_factors'] = {}
+                    
+                    # Convert status string to enum
+                    if 'status' in item_data and isinstance(item_data['status'], str):
+                        item_data['status'] = ReviewStatus(item_data['status'])
                          
                     item = ReviewItem(**item_data)
                     self._items[item.item_id] = item
@@ -598,11 +599,10 @@ class ReviewQueueManager:
             try:
                 # Reconstruct ExtractedFieldData objects
                 extraction_result = {}
-                for k, v in data['extraction_result'].items():
-                    if isinstance(v, dict):
-                        extraction_result[k] = ExtractedFieldData(**v)
-                    else:
-                        pass
+                if data.get('extraction_result'):
+                    for k, v in data['extraction_result'].items():
+                        if isinstance(v, dict):
+                            extraction_result[k] = ExtractedFieldData(**v)
                 
                 # Filter valid keys
                 valid_keys = ReviewItem.__annotations__.keys()
@@ -611,6 +611,10 @@ class ReviewQueueManager:
                 
                 if 'priority_factors' not in item_data or not item_data['priority_factors']:
                      item_data['priority_factors'] = {}
+                
+                # Convert status string to enum
+                if 'status' in item_data and isinstance(item_data['status'], str):
+                    item_data['status'] = ReviewStatus(item_data['status'])
                      
                 result.append(ReviewItem(**item_data))
             except Exception as e:
