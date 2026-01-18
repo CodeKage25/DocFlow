@@ -982,7 +982,16 @@ class ExtractionModule:
         start_time = datetime.utcnow()
         
         # Step 1: Extract text from PDF
-        text = await self.pdf_processor.extract_text(document.content)
+        # Step 1: Extract text
+        if document.processing_config.enable_ocr:
+            text = await self.pdf_processor.extract_text(document.content)
+        else:
+            try:
+                text = document.content.decode('utf-8')
+            except UnicodeDecodeError:
+                # If cannot decode, might be binary but OCR disabled?
+                # Raise helpful error
+                raise ValueError("OCR disabled but content is not valid UTF-8 text.")
         
         if not text.strip():
             raise ValueError("No text could be extracted from document")

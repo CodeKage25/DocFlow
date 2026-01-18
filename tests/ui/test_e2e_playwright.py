@@ -1,12 +1,6 @@
 """
 Playwright E2E Tests for DocFlow UI
 
-Run with: pytest tests/ui/test_e2e_playwright.py -v --headed
-Requires: pip install pytest-playwright && playwright install
-
-IMPORTANT: Run these tests with the dev servers running:
-  - Backend: uvicorn src.main:app --reload --port 8000
-  - Frontend: cd ui && npm run dev (on port 5173)
 """
 
 import pytest

@@ -14,6 +14,8 @@ import tempfile
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
+from extraction_module import DocumentType, ProcessingConfig
+
 
 class TestLatency:
     """Tests for processing latency."""
@@ -24,13 +26,14 @@ class TestLatency:
         from extraction_module import ExtractionModule, DocumentInput
         
         with tempfile.TemporaryDirectory() as tmpdir:
-            module = ExtractionModule(output_dir=tmpdir, mock_mode=True)
+            module = ExtractionModule(output_dir=tmpdir)
             
             doc = DocumentInput(
                 document_id="latency_test",
                 content=b"Test invoice content",
                 content_hash="hash123",
-                document_type="invoice"
+                document_type=DocumentType.INVOICE,
+                processing_config=ProcessingConfig(enable_ocr=False)
             )
             
             start = time.time()
@@ -112,7 +115,7 @@ class TestConcurrency:
                 workflow_id="wf_001",
                 extraction_result={"field": ExtractedFieldData(f"value_{i}", 0.9)},
                 document_preview_url=f"/preview/doc_{i}.pdf",
-                document_type="invoice"
+                document_type=DocumentType.INVOICE
             )
             items.append(item)
         
@@ -173,7 +176,7 @@ class TestStressTest:
                 workflow_id="wf_001",
                 extraction_result={"field": ExtractedFieldData(f"value_{i}", 0.9)},
                 document_preview_url=f"/preview/doc_{i}.pdf",
-                document_type="invoice"
+                document_type=DocumentType.INVOICE
             )
         
         # Get stats

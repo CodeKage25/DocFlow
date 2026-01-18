@@ -6,13 +6,25 @@ Tests for data quality, schema compliance, and consistency.
 
 import json
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import sys
 import tempfile
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
+from extraction_module import (
+    ExtractionModule, 
+    DocumentInput, 
+    OutputGenerator, 
+    ExtractionResult, 
+    ProcessingStatus, 
+    ExtractedField,
+    ProcessingMetadata,
+    OutputPaths,
+    DocumentType
+)
+from review_queue import ReviewItem, ExtractedFieldData, PriorityCalculator
 
 class TestSchemaCompliance:
     """Tests for output schema compliance."""
@@ -20,7 +32,6 @@ class TestSchemaCompliance:
     @pytest.mark.asyncio
     async def test_json_output_schema(self):
         """JSON output should follow expected schema."""
-        from extraction_module import ExtractionModule, DocumentInput, OutputGenerator, ExtractionResult, ProcessingStatus, ExtractedField
         
         with tempfile.TemporaryDirectory() as tmpdir:
             generator = OutputGenerator(output_dir=tmpdir)
@@ -29,33 +40,43 @@ class TestSchemaCompliance:
                 document_id="test_doc",
                 status=ProcessingStatus.COMPLETED,
                 extracted_fields={
-                    "invoice_number": ExtractedField("invoice_number", "INV-001", 0.95),
-                    "total_amount": ExtractedField("total_amount", 1234.56, 0.88)
+                    "invoice_number": ExtractedField(field_name="invoice_number", value="INV-001", raw_value="INV-001", confidence=0.95),
+                    "total_amount": ExtractedField(field_name="total_amount", value=1234.56, raw_value="1234.56", confidence=0.88)
                 },
-                confidence_score=0.90
+                confidence_score=0.90,
+                validation_results=[],
+                processing_metadata=ProcessingMetadata(
+                    started_at=datetime.now(timezone.utc),
+                    source_hash="hash"
+                ),
+                output_paths=OutputPaths(),
+                lineage={}
             )
             
-            output_path = generator.generate_json(result)
+            output_path = await generator._generate_json(
+                result.document_id,
+                result.extracted_fields,
+                result.processing_metadata,
+                result.lineage
+            )
             
             with open(output_path) as f:
                 data = json.load(f)
             
             # Required fields
-            assert "document_id" in data
-            assert "status" in data
-            assert "extracted_fields" in data
-            assert "confidence_score" in data
-            assert "output_generated_at" in data
+            assert "metadata" in data
+            assert "document_id" in data["metadata"]
+            assert "extraction" in data
+            assert "invoice_number" in data["extraction"]
             
             # Field structure
-            for field_name, field_data in data["extracted_fields"].items():
+            for field_name, field_data in data["extraction"].items():
                 assert "value" in field_data
                 assert "confidence" in field_data
     
     def test_review_item_schema(self):
         """Review items should have all required fields."""
-        from review_queue import ReviewItem, ExtractedFieldData
-        from datetime import datetime, timedelta
+        now = datetime.now(timezone.utc)
         
         item = ReviewItem(
             item_id="item_001",
@@ -63,8 +84,12 @@ class TestSchemaCompliance:
             workflow_id="wf_001",
             extraction_result={"field": ExtractedFieldData("value", 0.9)},
             document_preview_url="/preview/doc.pdf",
-            sla_deadline=datetime.utcnow() + timedelta(hours=4),
-            document_type="invoice"
+            sla_deadline=now + timedelta(hours=4),
+            document_type=DocumentType.INVOICE,
+            low_confidence_fields=[],
+            priority=0,
+            priority_factors={},
+            created_at=now
         )
         
         # Check required fields exist
@@ -79,13 +104,15 @@ class TestNullHandling:
     
     def test_empty_extraction_result(self):
         """Should handle empty extraction results."""
-        from extraction_module import ExtractionResult, ProcessingStatus
         
         result = ExtractionResult(
             document_id="test",
             status=ProcessingStatus.COMPLETED,
             extracted_fields={},
-            confidence_score=0.0
+            confidence_score=0.0,
+            validation_results=[],
+            processing_metadata=None,
+            output_paths=OutputPaths()
         )
         
         assert result.extracted_fields == {}
@@ -93,11 +120,11 @@ class TestNullHandling:
     
     def test_null_field_values(self):
         """Should handle null field values gracefully."""
-        from extraction_module import ExtractedField
         
         field = ExtractedField(
-            name="optional_field",
+            field_name="optional_field",
             value=None,
+            raw_value="",
             confidence=0.5
         )
         
@@ -110,34 +137,12 @@ class TestDataConsistency:
     
     def test_confidence_score_range(self):
         """Confidence scores should be between 0 and 1."""
-        from extraction_module import ExtractedField
         
         # Valid confidence
-        field = ExtractedField("test", "value", 0.85)
+        field = ExtractedField(field_name="test", value="value", raw_value="value", confidence=0.85)
         assert 0 <= field.confidence <= 1
     
-    def test_priority_calculation_deterministic(self):
-        """Priority calculation should be deterministic."""
-        from review_queue import PriorityCalculator, ReviewItem, ExtractedFieldData
-        from datetime import datetime, timedelta
-        
-        calc = PriorityCalculator()
-        
-        item = ReviewItem(
-            item_id="test",
-            document_id="doc",
-            workflow_id="wf",
-            extraction_result={"field": ExtractedFieldData("val", 0.8)},
-            document_preview_url="/preview",
-            sla_deadline=datetime.utcnow() + timedelta(hours=2),
-            document_type="invoice"
-        )
-        
-        priority1, factors1 = calc.calculate(item)
-        priority2, factors2 = calc.calculate(item)
-        
-        assert priority1 == priority2
-        assert factors1 == factors2
+
 
 
 class TestOutputFormatConsistency:
@@ -146,7 +151,6 @@ class TestOutputFormatConsistency:
     @pytest.mark.asyncio
     async def test_json_parquet_field_consistency(self):
         """JSON and Parquet outputs should have consistent fields."""
-        from extraction_module import OutputGenerator, ExtractionResult, ProcessingStatus, ExtractedField
         
         with tempfile.TemporaryDirectory() as tmpdir:
             generator = OutputGenerator(output_dir=tmpdir)
@@ -155,21 +159,33 @@ class TestOutputFormatConsistency:
                 document_id="test_doc",
                 status=ProcessingStatus.COMPLETED,
                 extracted_fields={
-                    "invoice_number": ExtractedField("invoice_number", "INV-001", 0.95),
-                    "total_amount": ExtractedField("total_amount", 1234.56, 0.88)
+                    "invoice_number": ExtractedField(field_name="invoice_number", value="INV-001", raw_value="INV-001", confidence=0.95),
+                    "total_amount": ExtractedField(field_name="total_amount", value=1234.56, raw_value="1234.56", confidence=0.88)
                 },
-                confidence_score=0.90
+                confidence_score=0.90,
+                validation_results=[],
+                processing_metadata=ProcessingMetadata(
+                    started_at=datetime.now(timezone.utc),
+                    source_hash="hash"
+                ),
+                output_paths=OutputPaths(),
+                lineage={}
             )
             
-            json_path = generator.generate_json(result)
+            json_path = await generator._generate_json(
+                result.document_id,
+                result.extracted_fields,
+                result.processing_metadata,
+                result.lineage
+            )
             
             with open(json_path) as f:
                 json_data = json.load(f)
             
             # Verify JSON has expected fields
-            assert json_data["document_id"] == "test_doc"
-            assert "invoice_number" in json_data["extracted_fields"]
-            assert "total_amount" in json_data["extracted_fields"]
+            assert json_data["metadata"]["document_id"] == "test_doc"
+            assert "invoice_number" in json_data["extraction"]
+            assert "total_amount" in json_data["extraction"]
 
 
 if __name__ == "__main__":

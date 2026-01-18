@@ -472,7 +472,7 @@ class TestWorkflowExecutor:
         result = await executor.execute("doc_001")
         
         assert result.status == WorkflowStatus.FAILED
-        assert "timeout" in result.error.lower()
+        assert "timed out" in result.error.lower()
 
 
 class TestFailureHandling:

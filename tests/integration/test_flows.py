@@ -6,13 +6,14 @@ Tests for component interactions and end-to-end flows.
 
 import asyncio
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
 import tempfile
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
+from extraction_module import DocumentType, DocumentInput, ExtractionModule, ProcessingConfig
 
 @pytest.fixture
 def temp_output_dir():
@@ -74,9 +75,9 @@ class TestWorkflowExecution:
         
         executor = WorkflowExecutor(dag)
         
-        start = datetime.utcnow()
+        start = datetime.now(timezone.utc)
         result = await executor.execute("doc_001")
-        duration = (datetime.utcnow() - start).total_seconds()
+        duration = (datetime.now(timezone.utc) - start).total_seconds()
         
         # A and B run in parallel (0.1s each), then C
         # Should be ~0.1s, not 0.2s
@@ -102,7 +103,7 @@ class TestReviewQueueIntegration:
                 "total_amount": ExtractedFieldData(1234.56, 0.88)
             },
             document_preview_url="/preview/doc_001.pdf",
-            document_type="invoice"
+            document_type=DocumentType.INVOICE
         )
         
         # Claim item
@@ -133,13 +134,13 @@ class TestReviewQueueIntegration:
             workflow_id="wf_001",
             extraction_result={"field": ExtractedFieldData("value", 0.9)},
             document_preview_url="/preview/doc_001.pdf",
-            document_type="invoice",
+            document_type=DocumentType.INVOICE,
             sla_hours=1  # 1 hour SLA
         )
         
         # Check that SLA deadline is set
         assert item.sla_deadline is not None
-        assert item.sla_deadline > datetime.utcnow()
+        assert item.sla_deadline > datetime.now(timezone.utc)
 
 
 class TestExtractionPipeline:
@@ -148,20 +149,20 @@ class TestExtractionPipeline:
     @pytest.mark.asyncio
     async def test_extract_and_output(self, temp_output_dir):
         """Should extract fields and generate output."""
-        from extraction_module import ExtractionModule, DocumentInput
-        
-        module = ExtractionModule(output_dir=temp_output_dir, mock_mode=True)
+        module = ExtractionModule(output_dir=temp_output_dir)
         
         doc = DocumentInput(
             document_id="test_doc",
             content=b"Invoice Number: INV-001\nTotal: $1000.00",
             content_hash="hash123",
-            document_type="invoice"
+            document_type=DocumentType.INVOICE,
+            processing_config=ProcessingConfig(enable_ocr=False)
         )
         
         result = await module.process(doc)
         
         assert result is not None
+        assert result.status != "failed" # Should complete (via mock internally if no key)
         assert len(result.extracted_fields) > 0
 
 
