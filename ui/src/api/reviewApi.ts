@@ -12,7 +12,8 @@ import type {
     SubmitReviewResponse,
 } from '../types';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000/api/v1/review';
+const base = import.meta.env.VITE_API_BASE || (import.meta.env.PROD ? '' : 'http://127.0.0.1:8000');
+const API_BASE = `${base}/api/v1/review`;
 
 class ReviewApi {
     private async request<T>(
