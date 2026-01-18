@@ -291,11 +291,14 @@ async def create_processing_workflow() -> WorkflowDAG:
                 )
             
             # Add to review queue
+            # Ensure preview URL handles extensions correctly
+            preview_url = f"/preview/{doc.document_id}"
+            
             review_item = await review_queue.add_item(
                 document_id=doc.document_id,
                 workflow_id=ctx.workflow_id,
                 extraction_result=extraction_data,
-                document_preview_url=f"/preview/{doc.document_id}.pdf",
+                document_preview_url=preview_url,
                 document_type=doc.document_type,
                 source_system=doc.metadata.get("source", "api")
             )
@@ -385,6 +388,7 @@ async def lifespan(app: FastAPI):
     
     # Create output directory
     Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
+    (Path(OUTPUT_DIR) / "previews").mkdir(parents=True, exist_ok=True)
     
     # Start background tasks
     asyncio.create_task(background_sla_monitor())
@@ -713,6 +717,11 @@ async def upload_document(
     content = await file.read()
     document_id = f"doc_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{file.filename}"
     
+    # Save file for preview
+    preview_path = Path(OUTPUT_DIR) / "previews" / document_id
+    with open(preview_path, "wb") as f:
+        f.write(content)
+    
     # Record metric
     metrics.record_document_received(document_type, source)
     
@@ -855,6 +864,12 @@ app.include_router(get_review_router(review_queue))
 # STATIC FILES (for production - serves the React build)
 # =============================================================================
 
+# Mount document previews (Priority 1)
+previews_dir = Path(OUTPUT_DIR) / "previews"
+previews_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/preview", StaticFiles(directory=previews_dir), name="previews")
+
+# Mount React Assets and SPA fallback (Priority 2)
 static_dir = Path(__file__).parent.parent / "static"
 if static_dir.exists():
     app.mount("/assets", StaticFiles(directory=static_dir / "assets"), name="assets")
@@ -870,6 +885,10 @@ if static_dir.exists():
         if file_path.exists() and file_path.is_file():
             return FileResponse(file_path)
         return FileResponse(static_dir / "index.html")
+else:
+    # If static dir doesn't exist (dev mode), just 404 for unknown paths
+    # except /preview which is handled above
+    pass
 
 
 # =============================================================================

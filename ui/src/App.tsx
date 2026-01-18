@@ -1155,7 +1155,12 @@ function DocumentReviewPanel({ item, onApprove, onCorrect, onReject, onRelease, 
                                             onChange={(e) => setEditedFields(prev => ({ ...prev, [fieldName]: e.target.value }))}
                                         />
                                     ) : (
-                                        <div className="field-value">{String(field.value)}</div>
+                                        <div className="field-value">
+                                            {typeof field.value === 'object' && field.value !== null
+                                                ? <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '0.85em' }}>{JSON.stringify(field.value, null, 2)}</pre>
+                                                : String(field.value)
+                                            }
+                                        </div>
                                     )}
                                     <div className={`field-confidence ${getConfidenceClass(field.confidence)}`}>
                                         {isLowConfidence && <Icons.AlertTriangle />}
@@ -1340,6 +1345,7 @@ export default function App() {
                         setFiles={setUploadedFiles}
                         processedDocs={processedDocs}
                         setProcessedDocs={setProcessedDocs}
+                        queueCount={queueCount}
                     />
                 )}
                 {currentView === 'review' && <ReviewView />}
