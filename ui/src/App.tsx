@@ -206,9 +206,8 @@ function DocumentsView({
     setFiles,
     processedDocs,
     setProcessedDocs,
-    queueCount,
-    loading = false
-}: DocumentsViewProps & { loading?: boolean }) {
+    queueCount
+}: DocumentsViewProps) {
     const [processing, setProcessing] = useState(false);
     const [dragActive, setDragActive] = useState(false);
     const [expandedDoc, setExpandedDoc] = useState<string | null>(null);
@@ -1315,10 +1314,6 @@ export default function App() {
                 setQueueCount(stats.total_pending);
                 // Check for SLA breaches
                 if (stats.sla_breached > 0) {
-                    // We could use a more persistent toast or a dedicated banner here
-                    // For now, let's use a console warning and potentially a visual indicator in the future
-                    // User requested "notification or anything or board"
-                    // Let's add a visual banner in the DocumentsView or global layout
                 }
             }).catch(() => { });
         };
@@ -1342,13 +1337,7 @@ export default function App() {
         return () => clearInterval(interval);
     }, []);
 
-    // Initial data loading state
-    const [initialLoading, setInitialLoading] = useState(true);
 
-    useEffect(() => {
-        // Simulate initial load or use real data check
-        setTimeout(() => setInitialLoading(false), 1000);
-    }, []);
 
     return (
         <div className="app">
@@ -1399,7 +1388,6 @@ export default function App() {
                         processedDocs={processedDocs}
                         setProcessedDocs={setProcessedDocs}
                         queueCount={queueCount}
-                        loading={initialLoading}
                     />
                 )}
                 {currentView === 'review' && <ReviewView />}
