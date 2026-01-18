@@ -995,6 +995,58 @@ function ReviewView() {
 // DOCUMENT REVIEW PANEL - Enhanced
 // =============================================================================
 
+function DocumentPreview({ url, type }: { url: string; type: string }) {
+    const [isLoading, setIsLoading] = useState(true);
+    const [hasError, setHasError] = useState(false);
+
+    useEffect(() => {
+        setIsLoading(true);
+        setHasError(false);
+    }, [url]);
+
+    const handleLoad = () => {
+        setIsLoading(false);
+    };
+
+    const handleError = () => {
+        setIsLoading(false);
+        setHasError(true);
+    };
+
+    return (
+        <div className="document-preview-container">
+            {isLoading && (
+                <div className="preview-loader">
+                    <span className="spinner"></span>
+                    <p>Loading document...</p>
+                </div>
+            )}
+
+            {hasError ? (
+                <div className="preview-error">
+                    <Icons.AlertTriangle />
+                    <p>Failed to load document preview</p>
+                </div>
+            ) : type === 'pdf' || url.endsWith('.pdf') ? (
+                <iframe
+                    src={url}
+                    className={`document-frame ${isLoading ? 'hidden' : ''}`}
+                    onLoad={handleLoad}
+                    onError={handleError}
+                />
+            ) : (
+                <img
+                    src={url}
+                    className={`document-image ${isLoading ? 'hidden' : ''}`}
+                    onLoad={handleLoad}
+                    onError={handleError}
+                    alt="Document Preview"
+                />
+            )}
+        </div>
+    );
+}
+
 interface DocumentReviewPanelProps {
     item: ReviewItem;
     onApprove: () => void;
@@ -1073,6 +1125,12 @@ function DocumentReviewPanel({ item, onApprove, onCorrect, onReject, onRelease, 
             </div>
 
             <div className="review-content">
+                {/* Document Preview */}
+                <DocumentPreview
+                    url={item.document_preview_url ? `${API_BASE}${item.document_preview_url}` : ''}
+                    type={item.document_type === 'invoice' && item.document_preview_url?.endsWith('.pdf') ? 'pdf' : 'image'}
+                />
+
                 {/* Extracted Fields */}
                 <div className="extracted-fields-card">
                     <div className="card-header">
@@ -1202,11 +1260,48 @@ export default function App() {
     const [processedDocs, setProcessedDocs] = useState<ProcessedDocument[]>([]);
 
     useEffect(() => {
-        reviewApi.getQueueStats().then(stats => setQueueCount(stats.total_pending)).catch(() => { });
+        const fetchStats = () => {
+            reviewApi.getQueueStats().then(stats => {
+                setQueueCount(stats.total_pending);
+                // Check for SLA breaches
+                if (stats.sla_breached > 0) {
+                    // We could use a more persistent toast or a dedicated banner here
+                    // For now, let's use a console warning and potentially a visual indicator in the future
+                    // User requested "notification or anything or board"
+                    // Let's add a visual banner in the DocumentsView or global layout
+                }
+            }).catch(() => { });
+        };
+
+        fetchStats();
+        const interval = setInterval(fetchStats, 10000); // Check every 10s
+        return () => clearInterval(interval);
     }, [currentView]);
+
+    // SLA Warning Banner
+    const [slaBreachedCount, setSlaBreachedCount] = useState(0);
+    useEffect(() => {
+        const checkSLA = async () => {
+            try {
+                const stats = await reviewApi.getQueueStats();
+                setSlaBreachedCount(stats.sla_breached);
+            } catch (e) { console.error(e); }
+        };
+        checkSLA();
+        const interval = setInterval(checkSLA, 5000);
+        return () => clearInterval(interval);
+    }, []);
 
     return (
         <div className="app">
+            {/* SLA Breach Banner */}
+            {slaBreachedCount > 0 && (
+                <div className="sla-banner" style={{ background: '#ef4444', color: 'white', padding: '0.5rem', textAlign: 'center', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                    <Icons.AlertTriangle />
+                    <span>⚠️ ALERT: {slaBreachedCount} document{slaBreachedCount > 1 ? 's' : ''} have breached SLA deadlines! Please review immediately.</span>
+                </div>
+            )}
+
             {/* Top Navigation */}
             <header className="app-header">
                 <div className="logo">
