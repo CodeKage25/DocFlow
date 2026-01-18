@@ -865,6 +865,7 @@ function ReviewView() {
             setLoading(true);
             const res = await reviewApi.debugReleaseAll();
             showToast('success', `Released ${res.released_count} items`);
+            setSelectedItem(null);
             loadData();
         } catch (error: any) {
             showToast('error', error.message);
