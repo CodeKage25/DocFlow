@@ -261,7 +261,7 @@ validation_rules:
       precision: 2
     
     percentage:
-      output_format: "decimal"  # 0.20 not 20%
+      output_format: "decimal"  
       precision: 4
 
 # =============================================================================
