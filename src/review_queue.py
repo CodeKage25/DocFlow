@@ -13,7 +13,7 @@ import time
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
@@ -29,6 +29,11 @@ from dataclasses import asdict
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def utc_now() -> datetime:
+    """Get current UTC time as timezone-aware datetime."""
+    return datetime.now(timezone.utc)
 
 
 # =============================================================================
@@ -119,7 +124,7 @@ class ReviewItem:
     @property
     def sla_remaining_seconds(self) -> int:
         """Get seconds remaining until SLA deadline."""
-        remaining = (self.sla_deadline - datetime.utcnow()).total_seconds()
+        remaining = (self.sla_deadline - utc_now()).total_seconds()
         return max(0, int(remaining))
     
     @property
@@ -283,7 +288,7 @@ class PriorityCalculator:
             factors["document_value"] = value_score
         
         # Factor 4: Queue Time Boost (0-10 points)
-        queue_hours = (datetime.utcnow() - item.created_at).total_seconds() / 3600
+        queue_hours = (utc_now() - item.created_at).total_seconds() / 3600
         time_boost = min(queue_hours * 2, 10)
         score += time_boost
         factors["queue_time_boost"] = time_boost
@@ -328,7 +333,7 @@ class AuditLogger:
         """Log an audit event."""
         entry = AuditEntry(
             entry_id=str(uuid.uuid4()),
-            timestamp=datetime.utcnow(),
+            timestamp=utc_now(),
             item_id=item_id,
             document_id=document_id,
             actor=actor,
@@ -422,9 +427,13 @@ class ReviewQueueManager:
                     
                     item_data['extraction_result'] = extraction_result
                     
-                    # Handle arrays/jsonb that might need migration
+                    # Provide defaults for fields not in DB table
                     if 'priority_factors' not in item_data or not item_data['priority_factors']:
                          item_data['priority_factors'] = {}
+                    if 'previous_reviewers' not in item_data or not item_data['previous_reviewers']:
+                         item_data['previous_reviewers'] = []
+                    if 'customer_id' not in item_data:
+                         item_data['customer_id'] = None
                     
                     # Convert status string to enum
                     if 'status' in item_data and isinstance(item_data['status'], str):
@@ -468,8 +477,8 @@ class ReviewQueueManager:
             low_confidence_fields=low_confidence_fields,
             priority=5,  # Will be recalculated
             priority_factors={},
-            created_at=datetime.utcnow(),
-            sla_deadline=datetime.utcnow() + timedelta(hours=sla_hours),
+            created_at=utc_now(),
+            sla_deadline=utc_now() + timedelta(hours=sla_hours),
             document_type=document_type,
             source_system=source_system,
             customer_id=customer_id
@@ -586,7 +595,7 @@ class ReviewQueueManager:
         
         # Average wait time
         if pending:
-            wait_times = [(datetime.utcnow() - i.created_at).total_seconds() / 60 for i in pending]
+            wait_times = [(utc_now() - i.created_at).total_seconds() / 60 for i in pending]
             stats.avg_wait_time_minutes = sum(wait_times) / len(wait_times)
         
         return stats
@@ -609,8 +618,13 @@ class ReviewQueueManager:
                 item_data = {k: v for k, v in data.items() if k in valid_keys}
                 item_data['extraction_result'] = extraction_result
                 
+                # Provide defaults for fields not in DB table
                 if 'priority_factors' not in item_data or not item_data['priority_factors']:
                      item_data['priority_factors'] = {}
+                if 'previous_reviewers' not in item_data or not item_data['previous_reviewers']:
+                     item_data['previous_reviewers'] = []
+                if 'customer_id' not in item_data:
+                     item_data['customer_id'] = None
                 
                 # Convert status string to enum
                 if 'status' in item_data and isinstance(item_data['status'], str):
@@ -648,7 +662,7 @@ class ReviewQueueManager:
                 return False, None, f"Item already {item.status.value}"
             
             # Check if claim expired on another reviewer
-            if item.claim_expires_at and datetime.utcnow() > item.claim_expires_at:
+            if item.claim_expires_at and utc_now() > item.claim_expires_at:
                 # Release expired claim
                 item.status = ReviewStatus.PENDING
                 item.assigned_to = None
@@ -660,8 +674,8 @@ class ReviewQueueManager:
             
             item.status = ReviewStatus.ASSIGNED
             item.assigned_to = reviewer_id
-            item.assigned_at = datetime.utcnow()
-            item.claim_expires_at = datetime.utcnow() + self._claim_timeout
+            item.assigned_at = utc_now()
+            item.claim_expires_at = utc_now() + self._claim_timeout
             item.review_attempts += 1
             
             # Update reviewer stats
@@ -785,8 +799,8 @@ class ReviewQueueManager:
                 corrections=corrections or [],
                 rejection_reason=rejection_reason,
                 rejection_category=rejection_category,
-                review_started_at=started_at or item.assigned_at or datetime.utcnow(),
-                review_completed_at=datetime.utcnow()
+                review_started_at=started_at or item.assigned_at or utc_now(),
+                review_completed_at=utc_now()
             )
             
             # Store result
@@ -906,7 +920,7 @@ class ReviewQueueManager:
         active = [i for i in items if i.assigned_to == reviewer_id and i.status != ReviewStatus.COMPLETED]
         
         # Get completed today
-        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start = utc_now().replace(hour=0, minute=0, second=0, microsecond=0)
         completed_today = [
             r for r in self._results.values()
             if r.reviewer_id == reviewer_id and r.review_completed_at >= today_start
@@ -941,7 +955,7 @@ class ReviewQueueManager:
         breached = []
         at_risk = []
         
-        now = datetime.utcnow()
+        now = utc_now()
         
         for item in items:
             if item.status == ReviewStatus.COMPLETED:
@@ -977,7 +991,7 @@ class ReviewQueueManager:
     
     async def release_expired_claims(self):
         """Release items where the claim has expired."""
-        now = datetime.utcnow()
+        now = utc_now()
         
         async with self._lock:
             for item in self._items.values():
@@ -1307,7 +1321,7 @@ def create_review_api(queue_manager: ReviewQueueManager = None) -> FastAPI:
         """Health check endpoint for container orchestration."""
         return {
             "status": "healthy",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utc_now().isoformat(),
             "version": "1.0.0"
         }
     

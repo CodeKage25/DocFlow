@@ -512,7 +512,14 @@ class ReviewRepository:
         try:
             async with pool.acquire() as conn:
                 rows = await conn.fetch(query)
-                return [dict(row) for row in rows]
+                items = []
+                for row in rows:
+                    item = dict(row)
+                    # Parse extraction_result if it's a string
+                    if isinstance(item.get('extraction_result'), str):
+                        item['extraction_result'] = json.loads(item['extraction_result'])
+                    items.append(item)
+                return items
         except Exception as e:
             logger.error(f"Failed to get active items: {e}")
             return []
@@ -534,7 +541,14 @@ class ReviewRepository:
         try:
             async with pool.acquire() as conn:
                 rows = await conn.fetch(query, limit)
-                return [dict(row) for row in rows]
+                items = []
+                for row in rows:
+                    item = dict(row)
+                    # Parse extraction_result if it's a string
+                    if isinstance(item.get('extraction_result'), str):
+                        item['extraction_result'] = json.loads(item['extraction_result'])
+                    items.append(item)
+                return items
         except Exception as e:
             logger.error(f"Failed to get completed items: {e}")
             return []            

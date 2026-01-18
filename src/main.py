@@ -15,7 +15,7 @@ import os
 import logging
 from dotenv import load_dotenv
 load_dotenv()
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Dict
 from contextlib import asynccontextmanager
@@ -149,20 +149,20 @@ async def create_processing_workflow() -> WorkflowDAG:
             metadata={
                 "filename": doc.metadata.get("filename", "unknown"),
                 "source": doc.metadata.get("source", "api"),
-                "ingested_at": datetime.utcnow().isoformat()
+                "ingested_at": datetime.now(timezone.utc).isoformat()
             }
         )
         
-        return {"document": doc, "ingested_at": datetime.utcnow().isoformat()}
+        return {"document": doc, "ingested_at": datetime.now(timezone.utc).isoformat()}
     
     # Step 2: Extract - use LLM to extract fields
     async def extract_handler(ctx):
         doc = ctx.step_outputs["ingest"]["document"]
         logger.info(f"Extracting fields from: {doc.document_id}")
         
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         result = await extraction_module.process(doc)
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         
         # Safely get status value (could be enum or string)
         status_val = result.status.value if hasattr(result.status, 'value') else str(result.status)
@@ -455,7 +455,7 @@ async def health_check():
     """Health check endpoint."""
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "version": "1.0.0"
     }
 
@@ -570,6 +570,62 @@ async def debug_extraction_logs():
     }
 
 
+@app.get("/api/v1/review/debug")
+async def debug_review_queue():
+    """Debug endpoint to check review queue state."""
+    from .database import ReviewRepository
+    from .review_queue import ReviewItem, ExtractedFieldData, ReviewStatus
+    
+    # Get items from database
+    db_active = await ReviewRepository.get_active_items()
+    db_completed = await ReviewRepository.get_completed_items(limit=10)
+    
+    # Get items from in-memory queue
+    in_memory_items = list(review_queue._items.keys())
+    
+    # Try to hydrate one item to see error
+    hydration_test = None
+    if db_active:
+        sample = db_active[0]
+        try:
+            extraction_result = {}
+            if sample.get('extraction_result'):
+                for k, v in sample['extraction_result'].items():
+                    if isinstance(v, dict):
+                        extraction_result[k] = ExtractedFieldData(**v)
+            
+            valid_keys = ReviewItem.__annotations__.keys()
+            item_data = {k: v for k, v in sample.items() if k in valid_keys}
+            item_data['extraction_result'] = extraction_result
+            
+            if 'priority_factors' not in item_data or not item_data['priority_factors']:
+                item_data['priority_factors'] = {}
+            
+            if 'status' in item_data and isinstance(item_data['status'], str):
+                item_data['status'] = ReviewStatus(item_data['status'])
+            
+            item = ReviewItem(**item_data)
+            hydration_test = {"success": True, "item_id": item.item_id}
+        except Exception as e:
+            hydration_test = {"success": False, "error": str(e), "missing_keys": [k for k in ReviewItem.__annotations__.keys() if k not in sample]}
+    
+    return {
+        "database": {
+            "active_items_count": len(db_active),
+            "active_items": [{"item_id": i.get("item_id"), "status": i.get("status"), "document_id": i.get("document_id")} for i in db_active[:10]],
+            "completed_items_count": len(db_completed),
+            "completed_items": [{"item_id": i.get("item_id"), "status": i.get("status")} for i in db_completed[:5]],
+            "sample_db_keys": list(db_active[0].keys()) if db_active else []
+        },
+        "in_memory": {
+            "items_count": len(in_memory_items),
+            "item_ids": in_memory_items[:10]
+        },
+        "hydration_test": hydration_test,
+        "expected_keys": list(ReviewItem.__annotations__.keys())
+    }
+
+
 @app.get("/api/v1/documents/{document_id}/output")
 async def get_document_output(document_id: str):
     """
@@ -655,7 +711,7 @@ async def upload_document(
     Upload and process a document file (PDF, image).
     """
     content = await file.read()
-    document_id = f"doc_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{file.filename}"
+    document_id = f"doc_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{file.filename}"
     
     # Record metric
     metrics.record_document_received(document_type, source)
