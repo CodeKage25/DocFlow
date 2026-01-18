@@ -26,7 +26,7 @@ def setup(page: Page):
 def test_dashboard_loads(page: Page):
     """Test that main dashboard loads with key elements."""
     # Check for main title in header
-    expect(page.locator("text=DocFlow")).first.to_be_visible(timeout=10000)
+    expect(page.locator("text=DocFlow").first).to_be_visible(timeout=10000)
     
     # Check for document processing section
     expect(page.get_by_text("Document Processing")).to_be_visible()
@@ -34,9 +34,9 @@ def test_dashboard_loads(page: Page):
 
 def test_stats_cards_visible(page: Page):
     """Test that stats cards are displayed."""
-    expect(page.get_by_text("COMPLETED")).to_be_visible()
-    expect(page.get_by_text("NEED REVIEW")).to_be_visible()
-    expect(page.get_by_text("ERRORS")).to_be_visible()
+    expect(page.get_by_text("COMPLETED").first).to_be_visible()
+    expect(page.get_by_text("NEED REVIEW").first).to_be_visible()
+    expect(page.get_by_text("ERRORS").first).to_be_visible()
 
 
 def test_file_upload_zone_exists(page: Page):
@@ -46,9 +46,10 @@ def test_file_upload_zone_exists(page: Page):
 
 def test_navigation_buttons(page: Page):
     """Test that navigation buttons are visible."""
-    expect(page.get_by_text("Upload")).to_be_visible()
-    expect(page.get_by_text("Review")).to_be_visible()
-    expect(page.get_by_text("Metrics")).to_be_visible()
+    # Use role button to be specific
+    expect(page.get_by_role("button").filter(has_text="Upload")).to_be_visible()
+    expect(page.get_by_role("button").filter(has_text="Review")).to_be_visible()
+    expect(page.get_by_role("button").filter(has_text="Metrics")).to_be_visible()
 
 
 def test_review_queue_navigation(page: Page):
