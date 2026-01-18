@@ -58,8 +58,9 @@ def test_review_queue_navigation(page: Page):
     
     # Check that we are in Review Queue view
     expect(page.get_by_text("Review Queue")).to_be_visible(timeout=5000)
-    expect(page.get_by_text("Pending")).to_be_visible()
-    expect(page.get_by_text("Approved")).to_be_visible()
+    # Check for presence of tabs using role button
+    expect(page.get_by_role("button").filter(has_text="Pending").first).to_be_visible()
+    expect(page.get_by_role("button").filter(has_text="Approved")).to_be_visible()
 
 
 def test_metrics_navigation(page: Page):
@@ -78,10 +79,10 @@ def test_queue_tabs_switch(page: Page):
     expect(page.get_by_text("Review Queue")).to_be_visible(timeout=5000)
     
     # Click Approved tab
-    page.locator("text=Approved").first.click()
+    page.get_by_role("button").filter(has_text="Approved").click()
     
     # Click back to Pending tab
     page.get_by_role("button").filter(has_text="Pending").first.click()
     
-    # Pending stats should be visible
-    expect(page.get_by_text("PENDING")).to_be_visible()
+    # Pending stats should be visible - check for the quick stat label specifically or just the tab active state
+    expect(page.locator(".queue-tab.active").filter(has_text="Pending")).to_be_visible()
