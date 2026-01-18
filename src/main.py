@@ -745,10 +745,17 @@ async def batch_process(request: BatchProcessRequest):
 @app.get("/api/v1/metrics")
 async def get_metrics():
     """Get current metrics as JSON for frontend display."""
-    # Count documents from extraction_logs
-    docs_received = len(extraction_logs)
-    docs_processed = sum(1 for log in extraction_logs.values() if log.get("status") == "completed")
-    docs_errors = sum(1 for log in extraction_logs.values() if log.get("status") in ("failed", "error"))
+    # Get document counts from database (persists across restarts)
+    try:
+        docs = await DocumentRepository.list_all(limit=10000)
+        docs_received = len(docs)
+        docs_processed = sum(1 for d in docs if d.get("status") in ("completed", "review_pending", "processing"))
+        docs_errors = sum(1 for d in docs if d.get("status") in ("failed", "error"))
+    except Exception as e:
+        logger.warning(f"Failed to get docs from DB, falling back to in-memory: {e}")
+        docs_received = len(extraction_logs)
+        docs_processed = sum(1 for log in extraction_logs.values() if log.get("status") == "completed")
+        docs_errors = sum(1 for log in extraction_logs.values() if log.get("status") in ("failed", "error"))
     
     # Get review queue depth
     queue_stats = await review_queue.get_stats()

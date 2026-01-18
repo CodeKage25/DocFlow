@@ -468,6 +468,11 @@ class ReviewRepository:
         """
         
         try:
+            # Ensure status is a string, not an enum
+            status_val = item_data['status']
+            if hasattr(status_val, 'value'):
+                status_val = status_val.value
+            
             async with pool.acquire() as conn:
                 await conn.execute(
                     query,
@@ -479,7 +484,7 @@ class ReviewRepository:
                     item_data['document_type'],
                     item_data['source_system'],
                     item_data['priority'],
-                    item_data['status'],
+                    status_val,
                     item_data.get('assigned_to'),
                     item_data.get('assigned_at'),
                     item_data.get('claim_expires_at'),
