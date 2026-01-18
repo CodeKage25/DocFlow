@@ -63,9 +63,57 @@ DocFlow/
 
 ## Testing
 
+### Unit & Integration Tests (Python)
+
 ```bash
+# Activate venv
+source venv/bin/activate
+
+# Run all tests
 pytest tests/ -v
+
+# Run with coverage
 pytest tests/ --cov=src --cov-report=html
+
+# Run specific test files
+pytest tests/test_extraction_module.py -v
+pytest tests/test_workflow_executor.py -v
+```
+
+### UI E2E Tests (Playwright)
+
+```bash
+# Install Playwright
+pip install pytest-playwright
+playwright install chromium
+
+# Start dev servers first (in separate terminals):
+# Terminal 1: uvicorn src.main:app --reload --port 8000
+# Terminal 2: cd ui && npm run dev
+
+# Run UI tests
+pytest tests/ui/test_e2e_playwright.py -v
+
+# Run with visible browser
+pytest tests/ui/test_e2e_playwright.py -v --headed
+
+# Run specific test
+pytest tests/ui/test_e2e_playwright.py::test_dashboard_loads -v
+```
+
+### Test Structure
+
+```
+tests/
+├── test_extraction_module.py    # Extraction tests
+├── test_workflow_executor.py    # Workflow tests
+├── unit/                        # Unit tests
+├── integration/                 # Integration tests
+├── performance/                 # Load tests
+├── quality/                     # Field accuracy tests
+└── ui/
+    ├── test_components.py       # Component tests
+    └── test_e2e_playwright.py   # E2E browser tests
 ```
 
 ## Deployment
