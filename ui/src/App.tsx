@@ -80,6 +80,12 @@ const Icons = {
             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
         </svg>
     ),
+    Unlock: () => (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+        </svg>
+    ),
     Upload: () => (
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -207,6 +213,7 @@ function DocumentsView({
     const [dragActive, setDragActive] = useState(false);
     const [expandedDoc, setExpandedDoc] = useState<string | null>(null);
     const [extractionLogs, setExtractionLogs] = useState<Record<string, unknown>>({});
+    const [isLoading, setIsLoading] = useState(true);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const wsRef = useRef<WebSocket | null>(null);
 
@@ -235,6 +242,8 @@ function DocumentsView({
                 }
             } catch (e) {
                 console.error('Failed to load documents from DB:', e);
+            } finally {
+                setIsLoading(false);
             }
         };
         loadDocuments();
@@ -374,19 +383,19 @@ function DocumentsView({
             </div>
 
             {/* Stats Cards */}
-            {processedDocs.length > 0 && (
+            {(processedDocs.length > 0 || isLoading) && (
                 <div className="upload-stats">
                     <div className="upload-stat-card">
                         <div className="upload-stat-icon completed"><Icons.CheckCircle /></div>
                         <div className="upload-stat-info">
-                            <span className="upload-stat-value">{loading ? '...' : completedCount}</span>
+                            <span className="upload-stat-value">{isLoading ? '...' : completedCount}</span>
                             <span className="upload-stat-label">Completed</span>
                         </div>
                     </div>
                     <div className="upload-stat-card" onClick={needsReviewCount > 0 ? onGoToReview : undefined} style={needsReviewCount > 0 ? { cursor: 'pointer' } : {}}>
                         <div className="upload-stat-icon review"><Icons.AlertTriangle /></div>
                         <div className="upload-stat-info">
-                            <span className="upload-stat-value">{loading ? '...' : needsReviewCount}</span>
+                            <span className="upload-stat-value">{isLoading ? '...' : needsReviewCount}</span>
                             <span className="upload-stat-label">Need Review</span>
                         </div>
                         {needsReviewCount > 0 && <span className="upload-stat-action">→</span>}
@@ -394,7 +403,7 @@ function DocumentsView({
                     <div className="upload-stat-card">
                         <div className="upload-stat-icon error"><Icons.XCircle /></div>
                         <div className="upload-stat-info">
-                            <span className="upload-stat-value">{loading ? '...' : errorCount}</span>
+                            <span className="upload-stat-value">{isLoading ? '...' : errorCount}</span>
                             <span className="upload-stat-label">Errors</span>
                         </div>
                     </div>
@@ -851,6 +860,20 @@ function ReviewView() {
         }
     }, [selectedItem, showToast, loadData]);
 
+    const handleReleaseAll = useCallback(async () => {
+        if (!window.confirm('Are you sure you want to release ALL claimed items? This will unassign everything for everyone. Use only for debugging.')) return;
+        try {
+            setLoading(true);
+            const res = await reviewApi.debugReleaseAll();
+            showToast('success', `Released ${res.released_count} items`);
+            loadData();
+        } catch (error: any) {
+            showToast('error', error.message);
+        } finally {
+            setLoading(false);
+        }
+    }, [loadData, showToast]);
+
     const handleCorrect = useCallback(async (corrections: FieldCorrection[]) => {
         if (!selectedItem) return;
         setActionLoading(true);
@@ -899,9 +922,14 @@ function ReviewView() {
                 <div className="queue-header" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem' }}>
                     <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between' }}>
                         <h2>Review Queue</h2>
-                        <button className="btn btn-ghost btn-sm" onClick={loadData}>
-                            <Icons.RefreshCw />
-                        </button>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <button className="btn btn-ghost btn-danger btn-sm" onClick={handleReleaseAll} title="Debug: Release All Claims">
+                                <Icons.Unlock />
+                            </button>
+                            <button className="btn btn-ghost btn-sm" onClick={loadData} title="Refresh">
+                                <Icons.RefreshCw />
+                            </button>
+                        </div>
                     </div>
 
                     <div className="queue-tabs">

@@ -706,6 +706,26 @@ class ReviewQueueManager:
         logger.info(f"Item {item_id} claimed by {reviewer_id}")
         return True, item, None
     
+    async def release_all_claims(self) -> int:
+        """Release ALL claimed items (Admin/Debug tool)."""
+        async with self._lock:
+            count = 0
+            for item in self._items.values():
+                if item.status == ReviewStatus.ASSIGNED:
+                    item.status = ReviewStatus.PENDING
+                    item.assigned_to = None
+                    item.assigned_at = None
+                    item.claim_expires_at = None
+                    # Update DB
+                    await ReviewRepository.upsert(asdict(item))
+                    count += 1
+            
+            # Reset all reviewer active counts
+            for stats in self._reviewer_stats.values():
+                stats.active_items_count = 0
+                
+            return count
+    
     async def release_item(
         self, 
         item_id: str, 
@@ -1298,6 +1318,12 @@ def get_review_router(queue_manager: ReviewQueueManager) -> APIRouter:
         finally:
             await queue_manager.unregister_websocket(websocket)
             
+    @router.post("/api/v1/review/debug/release-all")
+    async def debug_release_all():
+        """DEBUG: Release all claimed items."""
+        count = await queue_manager.release_all_claims()
+        return {"released_count": count}
+
     return router
 
 

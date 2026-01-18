@@ -138,6 +138,11 @@ class ReviewApi {
             return { active: [], completed_today: [] };
         }
     }
+    async debugReleaseAll(): Promise<{ released_count: number }> {
+        return this.request<{ released_count: number }>('/debug/release-all', {
+            method: 'POST',
+        });
+    }
 }
 
 export const reviewApi = new ReviewApi();
