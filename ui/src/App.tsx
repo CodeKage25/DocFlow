@@ -191,9 +191,10 @@ interface DocumentsViewProps {
     setFiles: React.Dispatch<React.SetStateAction<File[]>>;
     processedDocs: ProcessedDocument[];
     setProcessedDocs: React.Dispatch<React.SetStateAction<ProcessedDocument[]>>;
+    queueCount: number;
 }
 
-function DocumentsView({ onGoToReview, files, setFiles, processedDocs, setProcessedDocs }: DocumentsViewProps) {
+function DocumentsView({ onGoToReview, files, setFiles, processedDocs, setProcessedDocs, queueCount }: DocumentsViewProps) {
     const [processing, setProcessing] = useState(false);
     const [dragActive, setDragActive] = useState(false);
     const [expandedDoc, setExpandedDoc] = useState<string | null>(null);
@@ -350,9 +351,9 @@ function DocumentsView({ onGoToReview, files, setFiles, processedDocs, setProces
         setProcessing(false);
     };
 
-    const needsReviewCount = processedDocs.filter(d => d.needs_review).length;
     const completedCount = processedDocs.filter(d => d.status === 'completed').length;
     const errorCount = processedDocs.filter(d => d.status === 'error').length;
+    const needsReviewCount = queueCount;
 
     return (
         <div className="documents-view">
