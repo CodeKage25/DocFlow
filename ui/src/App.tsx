@@ -789,6 +789,14 @@ function ReviewView() {
 
     const handleSelectItem = useCallback(async (item: ReviewItem) => {
         if (selectedItem?.item_id === item.item_id) return;
+
+        // If in history mode, just select the item (read-only)
+        if (viewMode === 'history' || item.status === 'completed') {
+            setSelectedItem(item);
+            setShowMobileQueue(false);
+            return;
+        }
+
         try {
             const response = await reviewApi.claimItem(item.item_id);
             setSelectedItem(response.item);
@@ -796,7 +804,7 @@ function ReviewView() {
         } catch (error: any) {
             showToast('error', error.message || 'Failed to claim item');
         }
-    }, [selectedItem, showToast]);
+    }, [selectedItem, viewMode, showToast]);
 
     const handleRelease = useCallback(async () => {
         if (!selectedItem) return;
