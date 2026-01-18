@@ -194,7 +194,15 @@ interface DocumentsViewProps {
     queueCount: number;
 }
 
-function DocumentsView({ onGoToReview, files, setFiles, processedDocs, setProcessedDocs, queueCount }: DocumentsViewProps) {
+function DocumentsView({
+    onGoToReview,
+    files,
+    setFiles,
+    processedDocs,
+    setProcessedDocs,
+    queueCount,
+    loading = false
+}: DocumentsViewProps & { loading?: boolean }) {
     const [processing, setProcessing] = useState(false);
     const [dragActive, setDragActive] = useState(false);
     const [expandedDoc, setExpandedDoc] = useState<string | null>(null);
@@ -371,14 +379,14 @@ function DocumentsView({ onGoToReview, files, setFiles, processedDocs, setProces
                     <div className="upload-stat-card">
                         <div className="upload-stat-icon completed"><Icons.CheckCircle /></div>
                         <div className="upload-stat-info">
-                            <span className="upload-stat-value">{completedCount}</span>
+                            <span className="upload-stat-value">{loading ? '...' : completedCount}</span>
                             <span className="upload-stat-label">Completed</span>
                         </div>
                     </div>
                     <div className="upload-stat-card" onClick={needsReviewCount > 0 ? onGoToReview : undefined} style={needsReviewCount > 0 ? { cursor: 'pointer' } : {}}>
                         <div className="upload-stat-icon review"><Icons.AlertTriangle /></div>
                         <div className="upload-stat-info">
-                            <span className="upload-stat-value">{needsReviewCount}</span>
+                            <span className="upload-stat-value">{loading ? '...' : needsReviewCount}</span>
                             <span className="upload-stat-label">Need Review</span>
                         </div>
                         {needsReviewCount > 0 && <span className="upload-stat-action">→</span>}
@@ -386,7 +394,7 @@ function DocumentsView({ onGoToReview, files, setFiles, processedDocs, setProces
                     <div className="upload-stat-card">
                         <div className="upload-stat-icon error"><Icons.XCircle /></div>
                         <div className="upload-stat-info">
-                            <span className="upload-stat-value">{errorCount}</span>
+                            <span className="upload-stat-value">{loading ? '...' : errorCount}</span>
                             <span className="upload-stat-label">Errors</span>
                         </div>
                     </div>
@@ -777,6 +785,8 @@ function ReviewView() {
     }, [showToast]);
 
     const loadData = useCallback(() => {
+        // Always fetch both to avoid flickers/state issues, but optimize later if needed
+        // For now, prioritize the current view but ensure we have stats
         if (viewMode === 'queue') {
             fetchQueue();
         } else {
@@ -794,6 +804,12 @@ function ReviewView() {
         // If in history mode, just select the item (read-only)
         if (viewMode === 'history' || item.status === 'completed') {
             setSelectedItem(item);
+            setShowMobileQueue(false);
+            return;
+        }
+
+        // If clicking the ALREADY selected item, just show mobile view
+        if (selectedItem?.item_id === item.item_id) {
             setShowMobileQueue(false);
             return;
         }
@@ -1298,6 +1314,14 @@ export default function App() {
         return () => clearInterval(interval);
     }, []);
 
+    // Initial data loading state
+    const [initialLoading, setInitialLoading] = useState(true);
+
+    useEffect(() => {
+        // Simulate initial load or use real data check
+        setTimeout(() => setInitialLoading(false), 1000);
+    }, []);
+
     return (
         <div className="app">
             {/* SLA Breach Banner */}
@@ -1347,6 +1371,7 @@ export default function App() {
                         processedDocs={processedDocs}
                         setProcessedDocs={setProcessedDocs}
                         queueCount={queueCount}
+                        loading={initialLoading}
                     />
                 )}
                 {currentView === 'review' && <ReviewView />}
