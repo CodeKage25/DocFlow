@@ -13,7 +13,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 # Use dev server by default for testing
-BASE_URL = "http://localhost:5173"
+BASE_URL = "http://localhost:3000"
 
 
 @pytest.fixture(autouse=True)
