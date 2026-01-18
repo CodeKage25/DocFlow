@@ -267,56 +267,43 @@ async def create_processing_workflow() -> WorkflowDAG:
         result = ctx.step_outputs["extract"]["extraction_result"]
         doc = ctx.step_outputs["ingest"]["document"]
         
-        if validation["needs_review"]:
-            logger.info(f"Sending {doc.document_id} to review queue")
-            
-            # Update DB status
-            await DocumentRepository.update_status(doc.document_id, "review_pending")
-            
-            # Save extraction results (even if pending review)
-            fields_dict = {
-                k: {"value": getattr(v, "value", str(v)), "confidence": getattr(v, "confidence", 1.0)} 
-                for k, v in result.extracted_fields.items()
-            }
-            await DocumentRepository.save_extraction(doc.document_id, fields_dict, result.confidence_score)
-            
-            # Convert extraction result to review queue format - handle both dataclass and dict
-            extraction_data = {}
+        # ALWAYS Send to review queue per requirement
+        logger.info(f"Sending {doc.document_id} to review queue")
+        
+        # Update DB status
+        await DocumentRepository.update_status(doc.document_id, "review_pending")
+        
+        # Save extraction results (even if pending review)
+        fields_dict = {
+            k: {"value": getattr(v, "value", str(v)), "confidence": getattr(v, "confidence", 1.0)} 
+            for k, v in result.extracted_fields.items()
+        }
+        await DocumentRepository.save_extraction(doc.document_id, fields_dict, result.confidence_score)
+        
+        # Convert extraction result to review queue format - handle both dataclass and dict
+        extraction_data = {}
 
-            for field_name, field in result.extracted_fields.items():
-                extraction_data[field_name] = ExtractedFieldData(
-                    value=get_field_attr(field, 'value'),
-                    confidence=get_field_attr(field, 'confidence', 0.0),
-                    is_locked=get_field_attr(field, 'is_locked', False)
-                )
-            
-            # Add to review queue
-            # Ensure preview URL handles extensions correctly
-            preview_url = f"/preview/{doc.document_id}"
-            
-            review_item = await review_queue.add_item(
-                document_id=doc.document_id,
-                workflow_id=ctx.workflow_id,
-                extraction_result=extraction_data,
-                document_preview_url=preview_url,
-                document_type=doc.document_type,
-                source_system=doc.metadata.get("source", "api")
+        for field_name, field in result.extracted_fields.items():
+            extraction_data[field_name] = ExtractedFieldData(
+                value=get_field_attr(field, 'value'),
+                confidence=get_field_attr(field, 'confidence', 0.0),
+                is_locked=get_field_attr(field, 'is_locked', False)
             )
-            
-            return {"action": "review", "review_item_id": review_item.item_id}
-        else:
-            logger.info(f"Auto-approving {doc.document_id}")
-            
-            # Update DB status
-            await DocumentRepository.update_status(doc.document_id, "completed")
-            
-            # Save results
-            fields_dict = {
-                k: {"value": getattr(v, "value", str(v)), "confidence": getattr(v, "confidence", 1.0)} 
-                for k, v in result.extracted_fields.items()
-            }
-            await DocumentRepository.save_extraction(doc.document_id, fields_dict, result.confidence_score)
-            return {"action": "auto_approve"}
+        
+        # Add to review queue
+        # Ensure preview URL handles extensions correctly
+        preview_url = f"/preview/{doc.document_id}"
+        
+        review_item = await review_queue.add_item(
+            document_id=doc.document_id,
+            workflow_id=ctx.workflow_id,
+            extraction_result=extraction_data,
+            document_preview_url=preview_url,
+            document_type=doc.document_type,
+            source_system=doc.metadata.get("source", "api")
+        )
+        
+        return {"action": "review", "review_item_id": review_item.item_id}
     
     # Step 5: Output - generate final output files
     async def output_handler(ctx):
