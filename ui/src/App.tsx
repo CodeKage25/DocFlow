@@ -233,9 +233,12 @@ function DocumentsView({
                     }));
                     if (docsFromDb.length > 0) {
                         setProcessedDocs(prev => {
-                            const existingIds = new Set(prev.map(p => p.document_id));
-                            const newDocs = docsFromDb.filter(d => !existingIds.has(d.document_id));
-                            return [...prev, ...newDocs];
+                            // Merge strategy: Update existing docs if status changed, add new ones
+                            const prevMap = new Map(prev.map(p => [p.document_id, p]));
+                            docsFromDb.forEach(d => {
+                                prevMap.set(d.document_id, d);
+                            });
+                            return Array.from(prevMap.values());
                         });
                     }
                 }
@@ -848,7 +851,7 @@ function ReviewView() {
         setActionLoading(true);
         try {
             await reviewApi.submitReview(selectedItem.item_id, { decision: 'approve', corrections: [] });
-            showToast('success', 'Document approved');
+            showToast('success', 'Document approved and moved to History');
             setSelectedItem(null);
             setShowMobileQueue(true);
             loadData();
@@ -937,7 +940,7 @@ function ReviewView() {
                             className={`queue-tab ${viewMode === 'queue' ? 'active' : ''}`}
                             onClick={() => { setViewMode('queue'); setSelectedItem(null); }}
                         >
-                            Pending {queueStats && `(${queueStats.total_pending})`}
+                            Pending {queueStats && `(${queueStats.total_pending + queueStats.total_assigned})`}
                         </button>
                         <button
                             className={`queue-tab ${viewMode === 'history' ? 'active' : ''}`}
@@ -952,7 +955,7 @@ function ReviewView() {
                 {viewMode === 'queue' && queueStats && (
                     <div className="queue-quick-stats">
                         <div className="quick-stat">
-                            <span className="quick-stat-value">{queueStats.total_pending}</span>
+                            <span className="quick-stat-value">{queueStats.total_pending + queueStats.total_assigned}</span>
                             <span className="quick-stat-label">Pending</span>
                         </div>
                         <div className="quick-stat urgent">
@@ -1341,7 +1344,7 @@ export default function App() {
     useEffect(() => {
         const fetchStats = () => {
             reviewApi.getQueueStats().then(stats => {
-                setQueueCount(stats.total_pending);
+                setQueueCount(stats.total_pending + stats.total_assigned);
                 // Check for SLA breaches
                 if (stats.sla_breached > 0) {
                 }
