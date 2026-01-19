@@ -14,7 +14,8 @@ BASE_URL = "http://localhost:3000"
 def setup(page: Page):
     """Navigate to the app before each test."""
     page.goto(BASE_URL)
-    page.wait_for_load_state("networkidle", timeout=10000)
+    # Don't wait for networkidle because we have polling intervals
+    page.wait_for_selector(".app-header", state="visible", timeout=10000)
 
 
 def test_dashboard_loads(page: Page):
