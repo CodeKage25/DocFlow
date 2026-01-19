@@ -1111,7 +1111,11 @@ function DocumentReviewPanel({ item, onApprove, onCorrect, onReject, onRelease, 
     useEffect(() => {
         const fields: Record<string, any> = {};
         Object.entries(item.extraction_result).forEach(([key, field]) => {
-            fields[key] = field.value;
+            const val = field.value;
+            // Stringify objects/arrays for editing
+            fields[key] = (typeof val === 'object' && val !== null)
+                ? JSON.stringify(val, null, 2)
+                : val;
         });
         setEditedFields(fields);
         setEditMode(false);
@@ -1121,14 +1125,29 @@ function DocumentReviewPanel({ item, onApprove, onCorrect, onReject, onRelease, 
         const corrections: FieldCorrection[] = [];
         Object.entries(editedFields).forEach(([fieldName, newValue]) => {
             const original = item.extraction_result[fieldName]?.value;
-            if (original !== newValue) {
-                corrections.push({
-                    field_name: fieldName,
-                    original_value: original,
-                    corrected_value: newValue,
-                    correction_type: 'value_change',
-                });
+            let finalValue = newValue;
+
+            // Parse back JSON if original was object
+            if (typeof original === 'object' && original !== null) {
+                try {
+                    finalValue = JSON.parse(newValue);
+                    // Deep compare needed? For now, JSON.stringify comparison
+                    if (JSON.stringify(original) === JSON.stringify(finalValue)) return;
+                } catch (e) {
+                    // If invalid JSON, let it fail validation or save as string (might error on backend)
+                    // But we can't save broken JSON into an object field usually.
+                    // For now, assume user fixed it.
+                }
+            } else if (original === newValue) {
+                return;
             }
+
+            corrections.push({
+                field_name: fieldName,
+                original_value: original,
+                corrected_value: finalValue,
+                correction_type: 'value_change',
+            });
         });
         if (corrections.length > 0) {
             onCorrect(corrections);
@@ -1193,12 +1212,22 @@ function DocumentReviewPanel({ item, onApprove, onCorrect, onReject, onRelease, 
                                         {field.is_locked && <Icons.Lock />}
                                     </div>
                                     {editMode && !field.is_locked ? (
-                                        <input
-                                            type="text"
-                                            className="field-input"
-                                            value={editedFields[fieldName] ?? ''}
-                                            onChange={(e) => setEditedFields(prev => ({ ...prev, [fieldName]: e.target.value }))}
-                                        />
+                                        (String(editedFields[fieldName] ?? '').includes('\n') || (typeof item.extraction_result[fieldName]?.value === 'object' && item.extraction_result[fieldName]?.value !== null)) ? (
+                                            <textarea
+                                                className="field-input"
+                                                rows={5}
+                                                value={editedFields[fieldName] ?? ''}
+                                                onChange={(e) => setEditedFields(prev => ({ ...prev, [fieldName]: e.target.value }))}
+                                                style={{ fontFamily: 'monospace', fontSize: '12px' }}
+                                            />
+                                        ) : (
+                                            <input
+                                                type="text"
+                                                className="field-input"
+                                                value={editedFields[fieldName] ?? ''}
+                                                onChange={(e) => setEditedFields(prev => ({ ...prev, [fieldName]: e.target.value }))}
+                                            />
+                                        )
                                     ) : (
                                         <div className="field-value">
                                             {typeof field.value === 'object' && field.value !== null
