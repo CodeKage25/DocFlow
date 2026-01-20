@@ -730,16 +730,21 @@ class ReviewQueueManager:
         self, 
         item_id: str, 
         reviewer_id: str,
-        reason: Optional[str] = None
+        reason: Optional[str] = None,
+        force: bool = False
     ) -> Tuple[bool, Optional[str]]:
-        """Release an item back to the queue."""
+        """Release an item back to the queue.
+        
+        Args:
+            force: If True, skip the assignment check (admin operation).
+        """
         async with self._lock:
             item = self._items.get(item_id)
             
             if not item:
                 return False, "Item not found"
             
-            if item.assigned_to != reviewer_id:
+            if not force and item.assigned_to != reviewer_id:
                 return False, "Item not assigned to this reviewer"
             
             previous_state = {"status": item.status.value, "assigned_to": item.assigned_to}

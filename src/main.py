@@ -291,8 +291,8 @@ async def create_processing_workflow() -> WorkflowDAG:
             )
         
         # Add to review queue
-        # Ensure preview URL handles extensions correctly
-        preview_url = f"/preview/{doc.document_id}"
+        # Use preview URL from upload (Supabase or local fallback)
+        preview_url = doc.metadata.get("preview_url", f"/preview/{doc.document_id}")
         
         review_item = await review_queue.add_item(
             document_id=doc.document_id,
@@ -700,14 +700,33 @@ async def upload_document(
 ):
     """
     Upload and process a document file (PDF, image).
+    Files are stored in Supabase Storage for persistence.
     """
+    from .storage import upload_file as storage_upload, is_storage_configured
+    
     content = await file.read()
     document_id = f"doc_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{file.filename}"
     
-    # Save file for preview
-    preview_path = Path(OUTPUT_DIR) / "previews" / document_id
-    with open(preview_path, "wb") as f:
-        f.write(content)
+    # Determine content type
+    content_type = file.content_type or "application/pdf"
+    
+    # Upload to Supabase Storage (with local fallback)
+    preview_url = None
+    if is_storage_configured():
+        success, result = await storage_upload(content, document_id, content_type)
+        if success:
+            preview_url = result
+            logger.info(f"File uploaded to Supabase Storage: {document_id}")
+        else:
+            logger.warning(f"Supabase upload failed: {result}, using local fallback")
+    
+    # Local fallback: save to disk
+    if preview_url is None:
+        preview_path = Path(OUTPUT_DIR) / "previews" / document_id
+        preview_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(preview_path, "wb") as f:
+            f.write(content)
+        preview_url = f"/preview/{document_id}"
     
     # Record metric
     metrics.record_document_received(document_type, source)
@@ -716,14 +735,14 @@ async def upload_document(
     try:
         doc_type_enum = DocumentType(document_type)
     except ValueError:
-        doc_type_enum = DocumentType.INVOICE  # Default fallback
+        doc_type_enum = DocumentType.INVOICE
         
     doc = DocumentInput(
         document_id=document_id,
         content=content,
         content_hash=f"hash_{document_id}",
         document_type=doc_type_enum,
-        metadata={"source": source, "filename": file.filename}
+        metadata={"source": source, "filename": file.filename, "preview_url": preview_url}
     )
     
     # Create and execute workflow
@@ -742,7 +761,8 @@ async def upload_document(
         "filename": file.filename,
         "status": result.status.value,
         "needs_review": route_output.get("action") == "review",
-        "review_item_id": route_output.get("review_item_id")
+        "review_item_id": route_output.get("review_item_id"),
+        "preview_url": preview_url
     }
 
 

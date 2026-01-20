@@ -1128,21 +1128,31 @@ function DocumentReviewPanel({ item, onApprove, onCorrect, onReject, onRelease, 
         const corrections: FieldCorrection[] = [];
         Object.entries(editedFields).forEach(([fieldName, newValue]) => {
             const original = item.extraction_result[fieldName]?.value;
-            let finalValue = newValue;
+            let finalValue: any = newValue;
 
-            // Parse back JSON if original was object
+            // Convert value back to original type
             if (typeof original === 'object' && original !== null) {
+                // Parse JSON for objects/arrays
                 try {
                     finalValue = JSON.parse(newValue);
-                    // Deep compare needed? For now, JSON.stringify comparison
                     if (JSON.stringify(original) === JSON.stringify(finalValue)) return;
-                } catch (e) {
-                    // If invalid JSON, let it fail validation or save as string (might error on backend)
-                    // But we can't save broken JSON into an object field usually.
-                    // For now, assume user fixed it.
+                } catch {
+                    // Invalid JSON - skip this field or let backend handle error
+                    return;
                 }
-            } else if (original === newValue) {
-                return;
+            } else if (typeof original === 'number') {
+                // Convert string to number
+                const num = parseFloat(newValue);
+                if (isNaN(num)) return;
+                finalValue = num;
+                if (original === finalValue) return;
+            } else if (typeof original === 'boolean') {
+                // Convert string to boolean
+                finalValue = newValue === 'true' || newValue === '1';
+                if (original === finalValue) return;
+            } else {
+                // String comparison
+                if (original === newValue) return;
             }
 
             corrections.push({
