@@ -1506,8 +1506,21 @@ textarea.input {
         display: none;
     }
 
+    .review-main {
+        display: block;
+        padding: 0;
+        height: calc(100vh - 56px - 70px);
+        overflow-y: scroll !important;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .review-main.show {
+        display: block;
+    }
+
     .document-review-panel {
-        padding: 0 1rem 1rem;
+        padding: 0 1rem 120px;
+        min-height: min-content;
     }
 
     .review-header {
