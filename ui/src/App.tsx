@@ -198,6 +198,7 @@ interface DocumentsViewProps {
     processedDocs: ProcessedDocument[];
     setProcessedDocs: React.Dispatch<React.SetStateAction<ProcessedDocument[]>>;
     queueCount: number;
+    refreshTrigger?: number;
 }
 
 function DocumentsView({
@@ -206,7 +207,8 @@ function DocumentsView({
     setFiles,
     processedDocs,
     setProcessedDocs,
-    queueCount
+    queueCount,
+    refreshTrigger = 0
 }: DocumentsViewProps) {
     const [processing, setProcessing] = useState(false);
     const [dragActive, setDragActive] = useState(false);
@@ -249,7 +251,7 @@ function DocumentsView({
             }
         };
         loadDocuments();
-    }, [setProcessedDocs]);
+    }, [setProcessedDocs, refreshTrigger]);
 
     // WebSocket connection for real-time updates
     useEffect(() => {
@@ -737,7 +739,7 @@ function ApprovedDocumentsList({ items, onView }: { items: ReviewItem[]; onView:
 // REVIEW VIEW
 // =============================================================================
 
-function ReviewView() {
+function ReviewView({ onDocumentApproved }: { onDocumentApproved?: () => void }) {
     const [queueItems, setQueueItems] = useState<ReviewItem[]>([]);
     const [historyItems, setHistoryItems] = useState<ReviewItem[]>([]);
     const [viewMode, setViewMode] = useState<'queue' | 'history'>('queue');
@@ -864,12 +866,14 @@ function ReviewView() {
             setSelectedItem(null);
             setShowMobileQueue(true);
             loadData();
+            // Trigger refresh of documents view count
+            onDocumentApproved?.();
         } catch (error: any) {
             showToast('error', error.message);
         } finally {
             setActionLoading(false);
         }
-    }, [selectedItem, showToast, loadData, pendingCorrections]);
+    }, [selectedItem, showToast, loadData, pendingCorrections, onDocumentApproved]);
 
     const handleReleaseAll = useCallback(async () => {
         if (!window.confirm('Are you sure you want to release ALL claimed items? This will unassign everything for everyone. Use only for debugging.')) return;
@@ -1387,6 +1391,7 @@ export default function App() {
     // Lifted state for document persistence across tab switches
     const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
     const [processedDocs, setProcessedDocs] = useState<ProcessedDocument[]>([]);
+    const [docsRefreshTrigger, setDocsRefreshTrigger] = useState(0);
 
     useEffect(() => {
         const fetchStats = () => {
@@ -1468,9 +1473,10 @@ export default function App() {
                         processedDocs={processedDocs}
                         setProcessedDocs={setProcessedDocs}
                         queueCount={queueCount}
+                        refreshTrigger={docsRefreshTrigger}
                     />
                 )}
-                {currentView === 'review' && <ReviewView />}
+                {currentView === 'review' && <ReviewView onDocumentApproved={() => setDocsRefreshTrigger(t => t + 1)} />}
                 {currentView === 'metrics' && <MetricsView />}
             </main>
         </div>
