@@ -746,6 +746,7 @@ function ReviewView() {
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(false);
     const [showMobileQueue, setShowMobileQueue] = useState(true);
+    const [pendingCorrections, setPendingCorrections] = useState<FieldCorrection[]>([]);
     const [toasts, setToasts] = useState<{ id: string; type: string; message: string }[]>([]);
 
     const showToast = useCallback((type: string, message: string) => {
@@ -850,8 +851,16 @@ function ReviewView() {
         if (!selectedItem) return;
         setActionLoading(true);
         try {
-            await reviewApi.submitReview(selectedItem.item_id, { decision: 'approve', corrections: [] });
-            showToast('success', 'Document approved and moved to History');
+            // If there are pending corrections, submit as 'correct', otherwise 'approve'
+            const decision = pendingCorrections.length > 0 ? 'correct' : 'approve';
+            await reviewApi.submitReview(selectedItem.item_id, {
+                decision,
+                corrections: pendingCorrections
+            });
+            showToast('success', pendingCorrections.length > 0
+                ? 'Document corrected and approved'
+                : 'Document approved and moved to History');
+            setPendingCorrections([]);
             setSelectedItem(null);
             setShowMobileQueue(true);
             loadData();
@@ -860,7 +869,7 @@ function ReviewView() {
         } finally {
             setActionLoading(false);
         }
-    }, [selectedItem, showToast, loadData]);
+    }, [selectedItem, showToast, loadData, pendingCorrections]);
 
     const handleReleaseAll = useCallback(async () => {
         if (!window.confirm('Are you sure you want to release ALL claimed items? This will unassign everything for everyone. Use only for debugging.')) return;
@@ -877,21 +886,32 @@ function ReviewView() {
         }
     }, [loadData, showToast]);
 
-    const handleCorrect = useCallback(async (corrections: FieldCorrection[]) => {
+    const handleCorrect = useCallback((corrections: FieldCorrection[]) => {
         if (!selectedItem) return;
-        setActionLoading(true);
-        try {
-            await reviewApi.submitReview(selectedItem.item_id, { decision: 'correct', corrections });
-            showToast('success', `Document corrected`);
-            setSelectedItem(null);
-            setShowMobileQueue(true);
-            loadData();
-        } catch (error: any) {
-            showToast('error', error.message);
-        } finally {
-            setActionLoading(false);
-        }
-    }, [selectedItem, showToast, loadData]);
+
+        // Update local state with corrections so user can review before approving
+        const updatedExtractionResult = { ...selectedItem.extraction_result };
+        corrections.forEach((c) => {
+            if (updatedExtractionResult[c.field_name]) {
+                updatedExtractionResult[c.field_name] = {
+                    ...updatedExtractionResult[c.field_name],
+                    value: c.corrected_value,
+                    confidence: 1.0,
+                };
+            }
+        });
+
+        // Update selectedItem locally so user sees changes
+        setSelectedItem({
+            ...selectedItem,
+            extraction_result: updatedExtractionResult,
+        });
+
+        // Accumulate corrections for when user clicks Approve
+        setPendingCorrections(prev => [...prev, ...corrections]);
+
+        showToast('success', `${corrections.length} field(s) updated. Review and click Approve when ready.`);
+    }, [selectedItem, showToast]);
 
     const handleReject = useCallback(async (reason: string, _category: string) => {
         if (!selectedItem) return;
@@ -1127,29 +1147,46 @@ function DocumentReviewPanel({ item, onApprove, onCorrect, onReject, onRelease, 
     const handleSaveCorrections = () => {
         const corrections: FieldCorrection[] = [];
         Object.entries(editedFields).forEach(([fieldName, newValue]) => {
-            const original = item.extraction_result[fieldName]?.value;
+            const field = item.extraction_result[fieldName];
+            const original = field?.value;
             let finalValue: any = newValue;
 
-            // Convert value back to original type
-            if (typeof original === 'object' && original !== null) {
+            // Handle empty string - treat as null for numeric fields, keep as empty for strings
+            if (newValue === '' || newValue === null || newValue === undefined) {
+                // If original was null/undefined too, no change
+                if (original === null || original === undefined || original === '') return;
+                // Otherwise, this is clearing the field
+                finalValue = null;
+            } else if (typeof original === 'object' && original !== null) {
                 // Parse JSON for objects/arrays
                 try {
                     finalValue = JSON.parse(newValue);
                     if (JSON.stringify(original) === JSON.stringify(finalValue)) return;
                 } catch {
-                    // Invalid JSON - skip this field or let backend handle error
+                    // Invalid JSON - skip this field
                     return;
                 }
             } else if (typeof original === 'number') {
                 // Convert string to number
                 const num = parseFloat(newValue);
-                if (isNaN(num)) return;
-                finalValue = num;
+                if (isNaN(num)) {
+                    finalValue = null; // Invalid number becomes null
+                } else {
+                    finalValue = num;
+                }
                 if (original === finalValue) return;
             } else if (typeof original === 'boolean') {
                 // Convert string to boolean
                 finalValue = newValue === 'true' || newValue === '1';
                 if (original === finalValue) return;
+            } else if (original === null || original === undefined) {
+                // Original was null/undefined, keep new value as string or try to parse
+                const num = parseFloat(newValue);
+                if (!isNaN(num) && String(num) === newValue.trim()) {
+                    finalValue = num;
+                } else {
+                    finalValue = newValue; // Keep as string
+                }
             } else {
                 // String comparison
                 if (original === newValue) return;
