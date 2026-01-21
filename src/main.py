@@ -760,7 +760,7 @@ async def upload_document(
         content=content,
         content_hash=f"hash_{document_id}",
         document_type=doc_type_enum,
-        metadata={"source": source, "filename": file.filename, "preview_url": preview_url}
+        metadata={"source": source, "filename": file.filename, "preview_url": preview_url, "content_type": content_type}
     )
     
     # Create and execute workflow

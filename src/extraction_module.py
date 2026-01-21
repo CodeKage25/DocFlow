@@ -540,6 +540,67 @@ Be precise and only extract information explicitly present in the document."""
             logger.error(f"LLM extraction failed: {e}")
             raise
     
+    async def extract_from_image(self, image_bytes: bytes, content_type: str, document_type: DocumentType) -> Dict[str, Any]:
+        """Extract structured data from image using Mistral Pixtral (vision) model.
+        
+        Args:
+            image_bytes: Raw image bytes
+            content_type: MIME type of the image (e.g., 'image/jpeg', 'image/png')
+            document_type: Type of document for extraction prompts
+            
+        Returns:
+            Extracted fields dictionary
+        """
+        import base64
+        
+        client = await self._get_client()
+        
+        if client is None:
+            # Return mock data for testing
+            return self._mock_extraction(document_type)
+        
+        # Encode image as base64 data URL
+        base64_image = base64.b64encode(image_bytes).decode('utf-8')
+        image_url = f"data:{content_type};base64,{base64_image}"
+        
+        prompt = self.EXTRACTION_PROMPT.format(
+            document_type=document_type.value,
+            document_text="[Document is an image - extract fields from the image]"
+        )
+        
+        try:
+            logger.info(f"Extracting from image using pixtral-large-latest, size={len(image_bytes)} bytes")
+            
+            response = await asyncio.to_thread(
+                client.chat.complete,
+                model="pixtral-large-latest",  # Vision-capable model
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": image_url}}
+                    ]
+                }],
+                temperature=0.1,
+                max_tokens=4096,
+            )
+            
+            content = response.choices[0].message.content
+            logger.info(f"Vision extraction response received, length={len(content)}")
+            
+            # Parse JSON from response
+            start = content.find('{')
+            end = content.rfind('}') + 1
+            if start >= 0 and end > start:
+                json_str = content[start:end]
+                return json.loads(json_str)
+            else:
+                raise ValueError("No JSON object found in vision model response")
+                
+        except Exception as e:
+            logger.error(f"Vision extraction failed: {e}")
+            raise
+    
     def _mock_extraction(self, document_type: DocumentType) -> Dict[str, Any]:
         """Return mock extraction for testing without API key."""
         return {
@@ -981,27 +1042,46 @@ class ExtractionModule:
         """Core document processing logic."""
         start_time = datetime.utcnow()
         
-        # Step 1: Extract text from PDF
-        # Step 1: Extract text
-        if document.processing_config.enable_ocr:
-            text = await self.pdf_processor.extract_text(document.content)
-        else:
-            try:
-                text = document.content.decode('utf-8')
-            except UnicodeDecodeError:
-                # If cannot decode, might be binary but OCR disabled?
-                # Raise helpful error
-                raise ValueError("OCR disabled but content is not valid UTF-8 text.")
+        # Check if document is an image based on metadata or content type
+        IMAGE_TYPES = {"image/jpeg", "image/png", "image/tiff", "image/jpg", "image/webp"}
+        content_type = document.metadata.get("content_type", "")
+        filename = document.metadata.get("filename", "").lower()
         
-        if not text.strip():
-            raise ValueError("No text could be extracted from document")
-        
-        # Step 2: LLM extraction with circuit breaker
-        extraction_result = await self.circuit_breaker.call(
-            self.llm_client.extract,
-            text,
-            document.document_type
+        is_image = (
+            content_type in IMAGE_TYPES or
+            any(filename.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".tiff", ".webp"])
         )
+        
+        if is_image:
+            # Image path: use vision model directly on the raw bytes
+            logger.info(f"Processing image document: {document.document_id}")
+            extraction_result = await self.circuit_breaker.call(
+                self.llm_client.extract_from_image,
+                document.content,
+                content_type or "image/jpeg",
+                document.document_type
+            )
+        else:
+            # PDF/text path: extract text first, then use text model
+            if document.processing_config.enable_ocr:
+                text = await self.pdf_processor.extract_text(document.content)
+            else:
+                try:
+                    text = document.content.decode('utf-8')
+                except UnicodeDecodeError:
+                    # If cannot decode, might be binary but OCR disabled?
+                    # Raise helpful error
+                    raise ValueError("OCR disabled but content is not valid UTF-8 text.")
+            
+            if not text.strip():
+                raise ValueError("No text could be extracted from document")
+            
+            # LLM extraction with circuit breaker
+            extraction_result = await self.circuit_breaker.call(
+                self.llm_client.extract,
+                text,
+                document.document_type
+            )
         
         # Step 3: Parse extraction result into ExtractedField objects
         fields: Dict[str, ExtractedField] = {}
