@@ -617,6 +617,24 @@ async def debug_review_queue():
     }
 
 
+@app.post("/api/v1/review/debug/reload-queue")
+async def debug_reload_queue():
+    """Debug endpoint to force reload queue from database."""
+    try:
+        count_before = len(review_queue._items)
+        await review_queue.load_from_db()
+        count_after = len(review_queue._items)
+        return {
+            "success": True,
+            "items_before": count_before,
+            "items_after": count_after,
+            "loaded": count_after - count_before
+        }
+    except Exception as e:
+        logger.error(f"Queue reload failed: {e}")
+        return {"success": False, "error": str(e)}
+
+
 @app.get("/api/v1/documents/{document_id}/output")
 async def get_document_output(document_id: str):
     """

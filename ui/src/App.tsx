@@ -372,7 +372,7 @@ function DocumentsView({
         setProcessing(false);
     };
 
-    const completedCount = processedDocs.filter(d => d.status === 'completed').length;
+    const completedCount = processedDocs.filter(d => !d.needs_review && d.status !== 'error').length;
     const errorCount = processedDocs.filter(d => d.status === 'error').length;
     const needsReviewCount = queueCount;
 

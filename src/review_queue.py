@@ -531,8 +531,8 @@ class ReviewQueueManager:
         if status:
             items = [i for i in items if i.status == status]
         else:
-            # Default to pending items
-            items = [i for i in items if i.status == ReviewStatus.PENDING]
+            # Default to pending and expired items (SLA-breached items should still be reviewable)
+            items = [i for i in items if i.status in (ReviewStatus.PENDING, ReviewStatus.EXPIRED)]
         
         # Filter by priority
         if priority:
@@ -569,7 +569,8 @@ class ReviewQueueManager:
         
         stats = QueueStats()
         
-        pending = [i for i in items if i.status == ReviewStatus.PENDING]
+        # Include EXPIRED items as pending (SLA-breached items should still show as needing review)
+        pending = [i for i in items if i.status in (ReviewStatus.PENDING, ReviewStatus.EXPIRED)]
         assigned = [i for i in items if i.status == ReviewStatus.ASSIGNED]
         
         stats.total_pending = len(pending)
@@ -656,7 +657,7 @@ class ReviewQueueManager:
             if not item:
                 return False, None, "Item not found"
             
-            if item.status != ReviewStatus.PENDING:
+            if item.status not in (ReviewStatus.PENDING, ReviewStatus.EXPIRED):
                 if item.assigned_to == reviewer_id:
                     return True, item, None  # Already claimed by this reviewer
                 return False, None, f"Item already {item.status.value}"
