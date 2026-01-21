@@ -320,7 +320,7 @@ class DocumentRepository:
                     d.updated_at,
                     e.extracted_fields,
                     e.confidence_score,
-                    CASE WHEN r.item_id IS NOT NULL THEN true ELSE false END as needs_review,
+                    CASE WHEN r.item_id IS NOT NULL AND r.status NOT IN ('completed', 'rejected') THEN true ELSE false END as needs_review,
                     r.item_id as review_item_id,
                     r.status as review_status
                 FROM documents d
