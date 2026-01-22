@@ -21,9 +21,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
-# ENUMS AND CONSTANTS
-# =============================================================================
+
 
 class MetricType(str, Enum):
     """Types of metrics."""
@@ -46,9 +44,7 @@ class AlertState(str, Enum):
     RESOLVED = "resolved"
 
 
-# =============================================================================
-# METRIC CLASSES
-# =============================================================================
+
 
 @dataclass
 class MetricValue:
@@ -184,9 +180,7 @@ class Histogram:
         return self.get_sum(**labels) / count
 
 
-# =============================================================================
-# METRICS REGISTRY
-# =============================================================================
+
 
 class MetricsRegistry:
     """Central registry for all metrics."""
@@ -224,9 +218,7 @@ class MetricsRegistry:
 REGISTRY = MetricsRegistry()
 
 
-# =============================================================================
-# DOCUMENT PROCESSING METRICS
-# =============================================================================
+
 
 class DocumentMetrics:
     """Metrics specific to document processing."""
@@ -333,9 +325,7 @@ class DocumentMetrics:
         self.review_queue_depth.set(count, priority=str(priority))
 
 
-# =============================================================================
-# SLA DEFINITIONS
-# =============================================================================
+
 
 @dataclass
 class SLADefinition:
@@ -413,9 +403,7 @@ DEFAULT_SLAS = [
 ]
 
 
-# =============================================================================
-# ALERT MANAGER
-# =============================================================================
+
 
 @dataclass
 class Alert:
@@ -506,9 +494,7 @@ class AlertManager:
         return [a for a in self._alerts.values() if a.severity == severity and a.state == AlertState.FIRING]
 
 
-# =============================================================================
-# SLA MONITOR
-# =============================================================================
+
 
 class SLAMonitor:
     """Monitors SLAs and triggers alerts."""
@@ -585,9 +571,7 @@ class SLAMonitor:
             await asyncio.sleep(interval_seconds)
 
 
-# =============================================================================
-# METRICS EXPORTER
-# =============================================================================
+
 
 class MetricsExporter:
     """Exports metrics in various formats."""
@@ -663,9 +647,7 @@ class MetricsExporter:
         return result
 
 
-# =============================================================================
-# LOGGING ALERT HANDLER
-# =============================================================================
+
 
 def log_alert_handler(alert: Alert):
     """Simple alert handler that logs alerts."""
@@ -677,9 +659,7 @@ def log_alert_handler(alert: Alert):
         logger.info(f"ℹ️ INFO: {alert.message}")
 
 
-# =============================================================================
-# MAIN
-# =============================================================================
+
 
 async def main():
     """Test the monitoring module."""

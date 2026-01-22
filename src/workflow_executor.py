@@ -23,9 +23,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
-# ENUMS
-# =============================================================================
+
 
 class StepType(str, Enum):
     """Types of workflow steps."""
@@ -65,9 +63,7 @@ class ErrorPropagationStrategy(str, Enum):
     FAIL_BRANCH = "fail_branch"
 
 
-# =============================================================================
-# DATA MODELS
-# =============================================================================
+
 
 @dataclass
 class RetryConfig:
@@ -166,9 +162,7 @@ class ValidationError:
     step_id: Optional[str] = None
 
 
-# =============================================================================
-# RATE LIMITER
-# =============================================================================
+
 
 class TokenBucketRateLimiter:
     """Token bucket rate limiter for controlling throughput."""
@@ -222,9 +216,7 @@ class TokenBucketRateLimiter:
         return min(self.capacity, self._tokens + elapsed * self.rate)
 
 
-# =============================================================================
-# DAG VALIDATION
-# =============================================================================
+
 
 class WorkflowDAG:
     """DAG representation of a document processing workflow."""
@@ -399,9 +391,7 @@ class DAGValidator:
         return errors
 
 
-# =============================================================================
-# TOPOLOGICAL SORT
-# =============================================================================
+
 
 class TopologicalSorter:
     """Sorts DAG steps in topological order."""
@@ -439,9 +429,7 @@ class TopologicalSorter:
         return levels
 
 
-# =============================================================================
-# WORKFLOW EXECUTOR
-# =============================================================================
+
 
 class WorkflowExecutor:
     """
@@ -730,9 +718,7 @@ class WorkflowExecutor:
             )
 
 
-# =============================================================================
-# BATCH EXECUTOR
-# =============================================================================
+
 
 class BatchWorkflowExecutor:
     """Executes workflows for multiple documents in parallel."""
@@ -804,9 +790,7 @@ class BatchWorkflowExecutor:
         return processed_results
 
 
-# =============================================================================
 # WORKFLOW BUILDER
-# =============================================================================
 
 class WorkflowBuilder:
     """Fluent builder for creating workflow DAGs."""
@@ -852,9 +836,7 @@ class WorkflowBuilder:
         return self.dag
 
 
-# =============================================================================
 # EXAMPLE HANDLERS
-# =============================================================================
 
 async def ingest_handler(context: ExecutionContext) -> Dict[str, Any]:
     """Example ingest handler."""
@@ -908,9 +890,7 @@ async def output_parquet_handler(context: ExecutionContext) -> Dict[str, Any]:
     }
 
 
-# =============================================================================
 # MAIN
-# =============================================================================
 
 def create_document_workflow() -> WorkflowDAG:
     """Create the standard document processing workflow."""

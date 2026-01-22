@@ -34,9 +34,7 @@ except ImportError:
     ASYNCPG_AVAILABLE = False
     logger.warning("asyncpg not installed. Run: pip install asyncpg")
 
-# =============================================================================
-# CONFIGURATION
-# =============================================================================
+
 
 @dataclass
 class DatabaseConfig:
@@ -110,9 +108,7 @@ async def close_db_pool():
         logger.info("Database pool closed")
 
 
-# =============================================================================
-# DATABASE SCHEMA
-# =============================================================================
+
 
 SCHEMA_SQL = """
 -- DocFlow Database Schema
@@ -234,9 +230,7 @@ async def init_database():
         return False
 
 
-# =============================================================================
-# REPOSITORIES
-# =============================================================================
+
 
 class DocumentRepository:
     """Repository for document operations."""
@@ -331,83 +325,6 @@ class DocumentRepository:
             """, limit)
             
             return [dict(row) for row in rows]
-
-
-class ReviewItemRepository:
-    """Repository for review item operations."""
-    
-    @staticmethod
-    async def create(
-        item_id: str,
-        document_id: str,
-        workflow_id: str,
-        extraction_result: Dict,
-        document_type: str,
-        sla_deadline: datetime,
-        priority: int = 3,
-        low_confidence_fields: List[str] = None
-    ) -> Optional[str]:
-        """Create a new review item."""
-        pool = await get_db_pool()
-        if pool is None:
-            return item_id
-        
-        import json
-        async with pool.acquire() as conn:
-            await conn.execute("""
-                INSERT INTO review_items 
-                (item_id, document_id, workflow_id, extraction_result, document_type, 
-                 sla_deadline, priority, low_confidence_fields)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            """, item_id, document_id, workflow_id, json.dumps(extraction_result),
-                document_type, sla_deadline, priority, low_confidence_fields or [])
-        return item_id
-    
-    @staticmethod
-    async def get_pending(limit: int = 50) -> List[Dict]:
-        """Get pending review items."""
-        pool = await get_db_pool()
-        if pool is None:
-            return []
-        
-        async with pool.acquire() as conn:
-            rows = await conn.fetch("""
-                SELECT * FROM review_items 
-                WHERE status = 'pending'
-                ORDER BY priority, sla_deadline
-                LIMIT $1
-            """, limit)
-            return [dict(row) for row in rows]
-    
-    @staticmethod
-    async def claim(item_id: str, reviewer_id: str, expires_at: datetime) -> bool:
-        """Claim an item for review."""
-        pool = await get_db_pool()
-        if pool is None:
-            return True
-        
-        async with pool.acquire() as conn:
-            result = await conn.execute("""
-                UPDATE review_items 
-                SET status = 'assigned', assigned_to = $2, 
-                    assigned_at = NOW(), claim_expires_at = $3
-                WHERE item_id = $1 AND status = 'pending'
-            """, item_id, reviewer_id, expires_at)
-            return "UPDATE 1" in result
-    
-    @staticmethod
-    async def complete(item_id: str) -> bool:
-        """Mark item as completed."""
-        pool = await get_db_pool()
-        if pool is None:
-            return True
-        
-        async with pool.acquire() as conn:
-            result = await conn.execute(
-                "UPDATE review_items SET status = 'completed' WHERE item_id = $1",
-                item_id
-            )
-            return "UPDATE" in result
 
 
 class ReviewResultRepository:
@@ -552,18 +469,7 @@ class ReviewRepository:
         except Exception as e:
             logger.error(f"Failed to get completed items: {e}")
             return []            
-        query = """
-            SELECT * FROM review_items 
-            WHERE status IN ('pending', 'assigned', 'in_review', 'escalated')
-        """
-        
-        try:
-            async with pool.acquire() as conn:
-                rows = await conn.fetch(query)
-                return [dict(row) for row in rows]
-        except Exception as e:
-            logger.error(f"Failed to get active items: {e}")
-            return []
+
 
     @staticmethod
     async def update_status(item_id: str, status: str, reviewer_id: Optional[str] = None) -> bool:

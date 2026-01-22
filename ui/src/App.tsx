@@ -3,15 +3,11 @@ import type { ReviewItem, QueueStats, FieldCorrection } from './types';
 import { reviewApi } from './api/reviewApi';
 import './App.css';
 
-// =============================================================================
-// API Configuration
-// =============================================================================
+
 
 const API_BASE = import.meta.env.VITE_API_BASE || (import.meta.env.PROD ? '' : 'http://127.0.0.1:8000');
 
-// =============================================================================
-// UTILITY FUNCTIONS
-// =============================================================================
+
 
 
 
@@ -28,9 +24,7 @@ function getConfidenceClass(confidence: number): string {
     return 'confidence-low';
 }
 
-// =============================================================================
-// ICONS
-// =============================================================================
+
 
 const Icons = {
     Clock: () => (
@@ -152,9 +146,7 @@ const Icons = {
     ),
 };
 
-// =============================================================================
-// NAVIGATION
-// =============================================================================
+
 
 type ViewType = 'documents' | 'review' | 'metrics' | 'ai-logs';
 
@@ -178,9 +170,7 @@ function NavItem({ icon, label, active, onClick, badge }: NavItemProps) {
     );
 }
 
-// =============================================================================
-// DOCUMENT UPLOAD VIEW - Enhanced
-// =============================================================================
+
 
 interface ProcessedDocument {
     document_id: string;
@@ -601,9 +591,7 @@ function DocumentsView({
     );
 }
 
-// =============================================================================
-// METRICS VIEW
-// =============================================================================
+
 
 interface SystemMetrics {
     documents_received: number;
@@ -691,9 +679,7 @@ function MetricsView() {
 }
 
 
-// =============================================================================
-// APPROVED DOCUMENTS LIST
-// =============================================================================
+
 
 function ApprovedDocumentsList({ items, onView }: { items: ReviewItem[]; onView: (item: ReviewItem) => void }) {
     if (items.length === 0) {
@@ -735,9 +721,7 @@ function ApprovedDocumentsList({ items, onView }: { items: ReviewItem[]; onView:
     );
 }
 
-// =============================================================================
-// REVIEW VIEW
-// =============================================================================
+
 
 function ReviewView({ onDocumentApproved }: { onDocumentApproved?: () => void }) {
     const [queueItems, setQueueItems] = useState<ReviewItem[]>([]);
@@ -1063,9 +1047,7 @@ function ReviewView({ onDocumentApproved }: { onDocumentApproved?: () => void })
     );
 }
 
-// =============================================================================
 // DOCUMENT REVIEW PANEL - Enhanced
-// =============================================================================
 
 function DocumentPreview({ url, type }: { url: string; type: string }) {
     const [isLoading, setIsLoading] = useState(true);
@@ -1341,9 +1323,7 @@ function DocumentReviewPanel({ item, onApprove, onCorrect, onReject, onRelease, 
     );
 }
 
-// =============================================================================
 // REJECT MODAL
-// =============================================================================
 
 function RejectModal({ onConfirm, onCancel }: { onConfirm: (reason: string, category: string) => void; onCancel: () => void }) {
     const [reason, setReason] = useState('');
@@ -1380,9 +1360,7 @@ function RejectModal({ onConfirm, onCancel }: { onConfirm: (reason: string, cate
     );
 }
 
-// =============================================================================
 // MAIN APP COMPONENT - State lifted for persistence across views
-// =============================================================================
 
 export default function App() {
     const [currentView, setCurrentView] = useState<ViewType>('documents');

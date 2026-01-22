@@ -21,7 +21,6 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, APIRouter
 from pydantic import BaseModel, Field
 
-from pydantic import BaseModel, Field
 
 from src.database import DocumentRepository, ReviewRepository
 from dataclasses import asdict
@@ -36,9 +35,7 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-# =============================================================================
-# ENUMS
-# =============================================================================
+
 
 class ReviewStatus(str, Enum):
     """Status of a review item."""
@@ -66,9 +63,7 @@ class RejectionCategory(str, Enum):
     OTHER = "other"
 
 
-# =============================================================================
-# DATA MODELS
-# =============================================================================
+
 
 @dataclass
 class ExtractedFieldData:
@@ -229,9 +224,7 @@ class QueueStats:
     avg_wait_time_minutes: float = 0.0
 
 
-# =============================================================================
-# PRIORITY CALCULATOR
-# =============================================================================
+
 
 class PriorityCalculator:
     """Calculates review item priority."""
@@ -308,9 +301,7 @@ class PriorityCalculator:
         return priority, factors
 
 
-# =============================================================================
-# AUDIT LOGGER
-# =============================================================================
+
 
 class AuditLogger:
     """Logs audit events for review actions."""
@@ -364,9 +355,7 @@ class AuditLogger:
         return [e for e in self._entries if e.item_id == item_id]
 
 
-# =============================================================================
-# REVIEW QUEUE MANAGER
-# =============================================================================
+
 
 class ReviewQueueManager:
     """
@@ -1098,9 +1087,7 @@ class ReviewQueueManager:
             self._websocket_clients.discard(ws)
 
 
-# =============================================================================
 # API MODELS
-# =============================================================================
 
 class ClaimRequest(BaseModel):
     """Request to claim an item."""
@@ -1134,9 +1121,7 @@ class EscalateRequest(BaseModel):
     reason: str
 
 
-# =============================================================================
 # FASTAPI APPLICATION
-# =============================================================================
 
 def get_review_router(queue_manager: ReviewQueueManager) -> APIRouter:
     """Create APIRouter for review queue endpoints."""
@@ -1369,9 +1354,7 @@ def create_review_api(queue_manager: ReviewQueueManager = None) -> FastAPI:
     return app
 
 
-# =============================================================================
 # MAIN
-# =============================================================================
 
 async def main():
     """Test the review queue."""

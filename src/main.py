@@ -6,8 +6,6 @@ Unified entry point that combines:
 - Workflow orchestration (workflow_executor.py)
 - Human review queue (review_queue.py)
 - Monitoring & metrics (monitoring.py)
-
-Run with: uvicorn src.main:app --reload --port 8000
 """
 
 import asyncio
@@ -59,25 +57,21 @@ from .database import (
     get_db_pool, 
     close_db_pool, 
     init_database, 
-    DocumentRepository,
-    ReviewItemRepository
+    DocumentRepository
+
 )
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# =============================================================================
-# CONFIGURATION
-# =============================================================================
+
 
 OUTPUT_DIR = os.getenv("OUTPUT_DIR", "./output")
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.75"))
 MOCK_MODE = os.getenv("MOCK_MODE", "true").lower() == "true"
 
-# =============================================================================
-# GLOBAL INSTANCES
-# =============================================================================
+
 
 # Create module instances
 extraction_module = ExtractionModule(
@@ -128,15 +122,13 @@ class ConnectionManager:
 ws_manager = ConnectionManager()
 
 
-# =============================================================================
-# WORKFLOW DEFINITION
-# =============================================================================
+
 
 async def create_processing_workflow() -> WorkflowDAG:
     """Create the document processing workflow DAG."""
     dag = WorkflowDAG("document_processing", "Document Processing Pipeline")
     
-    # Step 1: Ingest - receive and validate document
+    # Ingest - receive and validate document
     async def ingest_handler(ctx):
         doc = ctx.metadata.get("document")
         logger.info(f"Ingesting document: {doc.document_id}")
@@ -155,7 +147,7 @@ async def create_processing_workflow() -> WorkflowDAG:
         
         return {"document": doc, "ingested_at": datetime.now(timezone.utc).isoformat()}
     
-    # Step 2: Extract - use LLM to extract fields
+    # Extract - use LLM to extract fields
     async def extract_handler(ctx):
         doc = ctx.step_outputs["ingest"]["document"]
         logger.info(f"Extracting fields from: {doc.document_id}")
@@ -214,7 +206,7 @@ async def create_processing_workflow() -> WorkflowDAG:
         
         return {"extraction_result": result}
     
-    # Step 3: Validate - check extracted data
+    # Validate - check extracted data
     async def validate_handler(ctx):
         result = ctx.step_outputs["extract"]["extraction_result"]
         logger.info(f"Validating extraction for: {result.document_id}")
@@ -261,7 +253,7 @@ async def create_processing_workflow() -> WorkflowDAG:
             return field.get(attr, default)
         return default
     
-    # Step 4: Route - decide if auto-approve or send to review
+    # Route - decide if auto-approve or send to review
     async def route_handler(ctx):
         validation = ctx.step_outputs["validate"]
         result = ctx.step_outputs["extract"]["extraction_result"]
@@ -305,7 +297,7 @@ async def create_processing_workflow() -> WorkflowDAG:
         
         return {"action": "review", "review_item_id": review_item.item_id}
     
-    # Step 5: Output - generate final output files
+    # Output - generate final output files
     async def output_handler(ctx):
         result = ctx.step_outputs["extract"]["extraction_result"]
         route = ctx.step_outputs["route"]
@@ -333,9 +325,7 @@ async def create_processing_workflow() -> WorkflowDAG:
     return dag
 
 
-# =============================================================================
-# API REQUEST/RESPONSE MODELS
-# =============================================================================
+
 
 class ProcessDocumentRequest(BaseModel):
     """Request to process a document."""
@@ -360,9 +350,7 @@ class BatchProcessRequest(BaseModel):
     documents: List[ProcessDocumentRequest]
 
 
-# =============================================================================
-# FASTAPI APPLICATION
-# =============================================================================
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -410,9 +398,7 @@ app.add_middleware(
 )
 
 
-# =============================================================================
-# BACKGROUND TASKS
-# =============================================================================
+
 
 async def background_sla_monitor():
     """Background task to monitor SLAs."""
@@ -437,9 +423,7 @@ async def background_claim_cleanup():
         await asyncio.sleep(30)  # Check every 30 seconds
 
 
-# =============================================================================
-# HEALTH & STATUS ENDPOINTS
-# =============================================================================
+
 
 @app.get("/health")
 async def health_check():
@@ -468,9 +452,7 @@ async def get_status():
     }
 
 
-# =============================================================================
-# DOCUMENTS & EXTRACTION LOG ENDPOINTS (for AI Thinking panel)
-# =============================================================================
+
 
 @app.get("/api/v1/documents")
 async def list_documents():
@@ -650,9 +632,7 @@ async def get_document_output(document_id: str):
         return json.load(f)
 
 
-# =============================================================================
-# DOCUMENT PROCESSING ENDPOINTS
-# =============================================================================
+
 
 @app.post("/api/v1/documents/process", response_model=ProcessDocumentResponse)
 async def process_document(
@@ -828,9 +808,7 @@ async def batch_process(request: BatchProcessRequest):
     }
 
 
-# =============================================================================
 # METRICS ENDPOINTS
-# =============================================================================
 
 @app.get("/api/v1/metrics")
 async def get_metrics():
@@ -873,9 +851,7 @@ async def prometheus_metrics():
     )
 
 
-# =============================================================================
 # INCLUDE REVIEW QUEUE API
-# =============================================================================
 
 # Import all review queue endpoints
 # Import review queue endpoints router
@@ -885,9 +861,7 @@ from .review_queue import get_review_router
 app.include_router(get_review_router(review_queue))
 
 
-# =============================================================================
 # STATIC FILES (for production - serves the React build)
-# =============================================================================
 
 # Mount document previews (Priority 1)
 previews_dir = Path(OUTPUT_DIR) / "previews"
@@ -916,9 +890,7 @@ else:
     pass
 
 
-# =============================================================================
 # WEBSOCKET FOR REAL-TIME UPDATES
-# =============================================================================
 
 @app.websocket("/ws/extraction/{document_id}")
 async def websocket_extraction(websocket: WebSocket, document_id: str):
@@ -945,9 +917,7 @@ async def websocket_extraction(websocket: WebSocket, document_id: str):
         ws_manager.disconnect(document_id)
 
 
-# =============================================================================
 # MAIN
-# =============================================================================
 
 if __name__ == "__main__":
     import uvicorn

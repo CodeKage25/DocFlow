@@ -3,9 +3,6 @@ Document Extraction Module
 
 Production-grade extraction module for processing invoices and other documents
 with LLM integration, idempotency, field preservation, and dual output formats.
-
-Author: DocFlow Team
-Version: 1.0.0
 """
 
 import asyncio
@@ -31,9 +28,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
-# ENUMS AND CONSTANTS
-# =============================================================================
+
 
 class DocumentType(str, Enum):
     """Supported document types."""
@@ -70,9 +65,7 @@ class CircuitState(str, Enum):
 EXTRACTION_MODEL_VERSION = "1.0.0"
 
 
-# =============================================================================
-# DATA MODELS
-# =============================================================================
+
 
 @dataclass
 class SourceLocation:
@@ -195,9 +188,7 @@ class AuditEvent:
     new_state: Optional[Dict[str, Any]] = None
 
 
-# =============================================================================
-# RETRY AND CIRCUIT BREAKER
-# =============================================================================
+
 
 @dataclass
 class RetryConfig:
@@ -295,9 +286,7 @@ class CircuitBreaker:
             raise
 
 
-# =============================================================================
-# CACHING
-# =============================================================================
+
 
 class IdempotencyCache:
     """Cache for idempotent processing results."""
@@ -340,9 +329,7 @@ class IdempotencyCache:
                 logger.info(f"Invalidated cache for fingerprint: {fingerprint[:16]}...")
 
 
-# =============================================================================
-# FIELD LOCK MANAGER
-# =============================================================================
+
 
 class FieldLockManager:
     """Manages field-level locks to prevent overwriting corrections."""
@@ -426,9 +413,7 @@ class FieldLockManager:
         return extracted
 
 
-# =============================================================================
-# LLM CLIENT
-# =============================================================================
+
 
 class LLMClient(ABC):
     """Abstract base class for LLM clients."""
@@ -527,8 +512,8 @@ Be precise and only extract information explicitly present in the document."""
             content = response.choices[0].message.content
             
             # Parse JSON from response
-            # Find JSON object in response
             start = content.find('{')
+
             end = content.rfind('}') + 1
             if start >= 0 and end > start:
                 json_str = content[start:end]
@@ -629,9 +614,7 @@ Be precise and only extract information explicitly present in the document."""
         }
 
 
-# =============================================================================
-# PDF PROCESSOR
-# =============================================================================
+
 
 class PDFProcessor:
     """Extracts text content from PDF documents."""
@@ -674,9 +657,7 @@ class PDFProcessor:
             return "[PDF content - install pdfplumber or PyMuPDF for extraction]"
 
 
-# =============================================================================
-# VALIDATORS
-# =============================================================================
+
 
 class FieldValidator:
     """Validates extracted fields against rules."""
@@ -748,9 +729,7 @@ class FieldValidator:
         return results
 
 
-# =============================================================================
-# OUTPUT GENERATORS
-# =============================================================================
+
 
 class OutputGenerator:
     """Generates Parquet and JSON output files."""
@@ -861,9 +840,7 @@ class OutputGenerator:
         return parquet_path
 
 
-# =============================================================================
 # AUDIT LOGGER
-# =============================================================================
 
 class AuditLogger:
     """Logs audit events for compliance."""
@@ -895,9 +872,7 @@ class AuditLogger:
         return [e for e in self._events if e.document_id == document_id]
 
 
-# =============================================================================
 # EXTRACTION MODULE
-# =============================================================================
 
 class ExtractionModule:
     """
@@ -1083,7 +1058,7 @@ class ExtractionModule:
                 document.document_type
             )
         
-        # Step 3: Parse extraction result into ExtractedField objects
+        # Parse extraction result into ExtractedField objects
         fields: Dict[str, ExtractedField] = {}
         for field_name, field_data in extraction_result.get("fields", {}).items():
             fields[field_name] = ExtractedField(
@@ -1093,16 +1068,16 @@ class ExtractionModule:
                 confidence=field_data.get("confidence", 0.0),
             )
         
-        # Step 4: Merge with locked fields (locked values always win)
+        # Merge with locked fields (locked values always win)
         fields = await self.field_lock_manager.merge_with_locks(
             document.document_id, 
             fields
         )
         
-        # Step 5: Validate extracted fields
+        # Validate extracted fields
         validation_results = self.validator.validate(fields)
         
-        # Step 6: Determine final status
+        # Determine final status
         overall_confidence = extraction_result.get("overall_confidence", 0.0)
         has_errors = any(v.severity == "error" and not v.passed for v in validation_results)
         needs_review = (
@@ -1117,7 +1092,7 @@ class ExtractionModule:
         
         await self._set_status(document.document_id, status)
         
-        # Step 7: Generate outputs
+        # Generate outputs
         end_time = datetime.utcnow()
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
         
@@ -1229,9 +1204,7 @@ class ExtractionModule:
         return await asyncio.gather(*tasks, return_exceptions=False)
 
 
-# =============================================================================
 # UTILITY FUNCTIONS
-# =============================================================================
 
 def compute_content_hash(content: bytes) -> str:
     """Compute SHA-256 hash of document content."""
@@ -1257,9 +1230,7 @@ async def create_document_input(
     )
 
 
-# =============================================================================
 # MAIN (for testing)
-# =============================================================================
 
 async def main():
     """Test the extraction module."""
